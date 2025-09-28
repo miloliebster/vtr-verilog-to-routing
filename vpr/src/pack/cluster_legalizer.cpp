@@ -38,6 +38,8 @@
 #include "vtr_vector.h"
 #include "vtr_vector_map.h"
 
+#include "characterization_logs.h"
+
 /*
  * @brief Allocates the stats stored within the pb of a cluster.
  *
@@ -561,6 +563,8 @@ try_place_atom_block_rec(const t_pb_graph_node* pb_graph_node,
         free(pb->name);
         pb->name = nullptr;
     }
+
+
     return block_pack_status;
 }
 
@@ -1364,7 +1368,6 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
         }
 
         if (block_pack_status != e_block_pack_status::BLK_PASSED) {
-            /* Pack unsuccessful, undo inserting molecule into cluster */
             for (size_t i = 0; i < failed_location; i++) {
                 AtomBlockId atom_blk_id = molecule.atom_block_ids[i];
                 if (atom_blk_id) {
@@ -1385,6 +1388,12 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
             cleanup_pb(cluster.pb);
         } else {
             VTR_LOGV(log_verbosity_ > 3, "\t\tPASSED pack molecule\n");
+            for (size_t i = 0; i < molecule.atom_block_ids.size(); i++) {
+                AtomBlockId atom_blk_id = molecule.atom_block_ids[i];
+                if (atom_blk_id) {
+                    g_pack_signatures.add_primitive(primitives_list[i], atom_blk_id);
+                }
+            }
         }
     }
 
@@ -1394,6 +1403,7 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
 
     return block_pack_status;
 }
+
 
 std::tuple<e_block_pack_status, LegalizationClusterId>
 ClusterLegalizer::start_new_cluster(PackMoleculeId molecule_id,

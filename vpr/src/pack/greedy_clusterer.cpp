@@ -55,6 +55,8 @@
 #include "vpr_context.h"
 #include "vtr_math.h"
 
+#include "characterization_logs.h"
+
 namespace {
 
 /**
@@ -218,6 +220,8 @@ GreedyClusterer::do_clustering(ClusterLegalizer& cluster_legalizer,
     // If this architecture has LE physical block, report its usage.
     report_le_physical_block_usage(cluster_legalizer);
 
+    g_pack_signatures.log_equivalent_placement_dependent();
+
     return num_used_type_instances;
 }
 
@@ -348,6 +352,8 @@ LegalizationClusterId GreedyClusterer::try_grow_cluster(PackMoleculeId seed_mol_
     // creating the clustered netlist.
     cluster_legalizer.clean_cluster(legalization_cluster_id);
 
+    g_pack_signatures.finalize_path(legalization_cluster_id);
+
     // Cluster has been grown successfully.
     return legalization_cluster_id;
 }
@@ -400,6 +406,8 @@ LegalizationClusterId GreedyClusterer::start_new_cluster(
         VTR_LOG("\n");
     }
 
+    try_open_logfile();
+
     //Try packing into each candidate type
     bool success = false;
     t_logical_block_type_ptr block_type;
@@ -408,6 +416,7 @@ LegalizationClusterId GreedyClusterer::start_new_cluster(
         //Try packing into each mode
         e_block_pack_status pack_result = e_block_pack_status::BLK_STATUS_UNDEFINED;
         for (int j = 0; j < type->pb_graph_head->pb_type->num_modes && !success; j++) {
+            g_pack_signatures.start_signature(type);
             std::tie(pack_result, new_cluster_id) = cluster_legalizer.start_new_cluster(seed_mol_id, type, j);
             success = (pack_result == e_block_pack_status::BLK_PASSED);
         }
