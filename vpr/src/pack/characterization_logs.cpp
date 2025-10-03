@@ -8,10 +8,195 @@
 
 #include "characterization_logs.h"
 
+PackSignatureTree g_pack_signatures; // TODO this should not be a global in the end. Part of ClusterLegalizer?
+
+void PackSignatureTree::start_pack_signature(const t_logical_block_type* cluster_logical_block_type) {
+    for (size_t i = 0; i < cluster_logical_block_types_.size(); i++) {
+        if (cluster_logical_block_types_[i] != cluster_logical_block_type) continue;
+
+        // existing cluster type
+        at_node_ = signatures_[i];
+        at_node_->visits++;
+        return;
+    }
+
+    // new cluster type
+    at_node_ = new PackSignatureTreeNode;
+    at_node_->visits = 1; // XXX characterization
+    cluster_logical_block_types_.push_back(cluster_logical_block_type);
+    signatures_.push_back(at_node_);
+}
+
+void PackSignatureTree::add_primitive(const t_pb_graph_node* primitive_pb_graph_node, const AtomBlockId atom_block_id) {
+    VTR_ASSERT(at_node_ != nullptr);
+
+    PackSignaturePrimitive* primitive = this->generate_primitive(primitive_pb_graph_node, atom_block_id);
+
+    // Determine whether path with this primitive primitive already exists.
+    // Similar packing primitives are likely to appear close to eachother due to greedy candidate selection,
+    // so iterate over the list in reverse to take better advantage of this locality.
+    for (ssize_t i = at_node_->child_primitives.size() - 1; i >= 0 ; i--) {
+        if (*at_node_->child_primitives[i] == *primitive) {
+            delete primitive;
+            at_node_->child_primitives[i]->atom_block_id = atom_block_id;
+            at_node_ = at_node_->child_nodes[i];
+            at_node_->visits++; // XXX characterization
+            return;
+        }
+    }
+
+    // This is a new diverging path, so add the primitive to the tree and create a new child node
+    at_node_->child_primitives.push_back(primitive);
+
+    PackSignatureTreeNode* new_node = new PackSignatureTreeNode;
+    new_node->parent = at_node_;
+    new_node->primitive = primitive;
+    at_node_->child_nodes.push_back(new_node);
+
+    at_node_ = new_node;
+    at_node_->visits = 1; // XXX characterization
+}
+
+PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_node* primitive_pb_graph_node, const AtomBlockId atom_block_id) {
+    PackSignaturePrimitive* primitive = new PackSignaturePrimitive;
+    primitive->pb_graph_node = primitive_pb_graph_node;
+    primitive->atom_block_id = atom_block_id;
+
+    const AtomNetlist& atom_netlist = g_vpr_ctx.atom().netlist();
+    AtomNetlist::pin_range source_input_pins = atom_netlist.block_input_pins(atom_block_id);
+    primitive->num_incoming_sources = source_input_pins.size();
+
+    // Identify if any primitives that have already been placed drive this new primitive
+    for (AtomPinId primitive_input_pin_id : source_input_pins) {
+        AtomNetId primitive_input_pin_net_id = atom_netlist.pin_net(primitive_input_pin_id);
+        AtomBlockId source_atom_block_id = atom_netlist.net_driver_block(primitive_input_pin_net_id);
+        VTR_ASSERT(source_atom_block_id != AtomBlockId::INVALID());
+
+        // Walk up the tree back to the seed primitive, checking if any already placed primitive is the source of this pin
+        for (PackSignatureTreeNode* probe = at_node_; probe->parent != nullptr; probe = probe->parent) {
+            if (source_atom_block_id == probe->primitive->atom_block_id) {
+                AtomPinId source_pin_id = atom_netlist.net_driver(primitive_input_pin_net_id);
+                AtomPortId source_port_id = atom_netlist.pin_port(source_pin_id);
+
+                PackSignatureConnection source_connection = {
+                    probe->primitive->pb_graph_node,
+                    atom_netlist.port_name(source_port_id),
+                    atom_netlist.pin_port_bit(source_pin_id)
+                };
+
+                primitive->intracluster_sources_to_primitive_inputs.push_back(source_connection);
+            }
+        }
+    }
+
+    // pin_range order could differ between equivalent clusters, so sort the sources list to ensure that primitives are comparable.
+    std::sort(primitive->intracluster_sources_to_primitive_inputs.begin(), primitive->intracluster_sources_to_primitive_inputs.end());
+
+    primitive->num_sinks = 0;
+    for (AtomPinId primitive_output_pin_id : atom_netlist.block_output_pins(atom_block_id)) {
+        AtomNetId primitive_output_net_id = atom_netlist.pin_net(primitive_output_pin_id);
+        primitive->num_sinks += atom_netlist.net_sinks(primitive_output_net_id).size();
+    }
+
+    // Since this block could have arbitrarily many sinks, rather than check all the sinks of this block
+    // to see if they are already in the cluster, the search space is reduced if we instead check to see
+    // if the source of any of the blocks already packed in this cluster is this block.
+    for (PackSignatureTreeNode* probe = at_node_; probe->parent != nullptr; probe = probe->parent) {
+        AtomNetlist::pin_range potential_sink_input_pins = atom_netlist.block_input_pins(probe->primitive->atom_block_id);
+
+        for (AtomPinId potential_sink_pin_id : potential_sink_input_pins) {
+            AtomNetId potential_sink_net_id = atom_netlist.pin_net(potential_sink_pin_id);
+            AtomBlockId source_atom_block_id = atom_netlist.net_driver_block(potential_sink_net_id);
+            VTR_ASSERT(source_atom_block_id != AtomBlockId::INVALID());
+
+            if (source_atom_block_id == atom_block_id) {
+                AtomPinId primitive_output_pin_id = atom_netlist.net_driver(potential_sink_net_id);
+                AtomPortId primitive_output_port_id = atom_netlist.pin_port(primitive_output_pin_id);
+                PackSignatureConnection sink_connection = {
+                    probe->primitive->pb_graph_node,
+                    atom_netlist.port_name(primitive_output_port_id),
+                    atom_netlist.pin_port_bit(primitive_output_pin_id)
+                };
+                primitive->intracluster_sinks_of_primitive_outputs.push_back(sink_connection);
+                break;
+            }
+        }
+    }
+
+    return primitive;
+}
+
+// ================================================================
+// START CHARACTERIZATION ONLY CODE
+// ================================================================
+
+size_t total_finalized_clusters = 0;
+
+static void recurse_placement_dependent(
+    const PackSignatureTreeNode* node,
+    size_t depth
+) {
+    if (node->parent != nullptr) {
+        for (size_t i = 0; i < depth; i++) g_logfile << "| ";
+
+        std::string intracluster_sources_to_primitive_inputs_string = "{ ";
+        for (size_t i = 0; i < node->primitive->intracluster_sources_to_primitive_inputs.size(); i++) {
+            intracluster_sources_to_primitive_inputs_string += node->primitive->intracluster_sources_to_primitive_inputs[i].to_string();
+            if (i < node->primitive->intracluster_sources_to_primitive_inputs.size() - 1) {
+                intracluster_sources_to_primitive_inputs_string += ", ";
+            }
+        }
+        intracluster_sources_to_primitive_inputs_string += " }";
+
+        std::string intracluster_sinks_of_primitive_outputs_string = "{ ";
+        for (size_t i = 0; i < node->primitive->intracluster_sinks_of_primitive_outputs.size(); i++) {
+            intracluster_sinks_of_primitive_outputs_string += node->primitive->intracluster_sinks_of_primitive_outputs[i].to_string();
+            if (i < node->primitive->intracluster_sinks_of_primitive_outputs.size() - 1) {
+                intracluster_sinks_of_primitive_outputs_string += ", ";
+            }
+        }
+        intracluster_sinks_of_primitive_outputs_string += " }";
+
+        g_logfile << std::format("<\"{}\", {:#08x}>: {{ num_incoming_sources: {}, drivers: {}, num_sinks: {}, driven: {}, visits: {} }}",
+                                 node->primitive->pb_graph_node->pb_type->name,
+                                 reinterpret_cast<uintptr_t>(node->primitive->pb_graph_node),
+                                 node->primitive->num_incoming_sources,
+                                 intracluster_sources_to_primitive_inputs_string,
+                                 node->primitive->num_sinks,
+                                 intracluster_sinks_of_primitive_outputs_string,
+                                 node->visits);
+    }
+
+    if (node->legalization_cluster_ids.size() > 0) {
+        g_logfile << " [" << node->legalization_cluster_ids.size() << " CLUSTERS]: { ";
+        for (LegalizationClusterId id : node->legalization_cluster_ids) {
+            g_logfile << id << " ";
+        }
+        g_logfile << "}";
+        total_finalized_clusters += node->legalization_cluster_ids.size();
+    }
+
+    g_logfile << std::endl;
+
+    // End of path reached
+    if (node->child_nodes.empty()) return;
+
+    for (PackSignatureTreeNode* child_node : node->child_nodes) {
+        recurse_placement_dependent(child_node, depth + 1);
+    }
+}
+
+void PackSignatureTree::log_equivalent() {
+    for (size_t i = 0; i < cluster_logical_block_types_.size(); i++) {
+        if (cluster_logical_block_types_[i]->name != "clb") continue;
+        g_logfile << std::format("cluster_pb_type: <{:#08x}, {}>", reinterpret_cast<uintptr_t>(cluster_logical_block_types_[i]), cluster_logical_block_types_[i]->name);
+        recurse_placement_dependent(signatures_[i], 0);
+        g_logfile << "TOTAL FINALIZED CLUSTERS: " << total_finalized_clusters << std::endl << std::endl;
+    }
+}
+
 std::ofstream g_logfile;
 bool logfile_open = false;
-
-PackSignatures g_pack_signatures;
 
 void try_open_logfile() {
     if (logfile_open) return;
@@ -26,200 +211,4 @@ void try_open_logfile() {
     std::atexit([](){ g_logfile.close(); });
     logfile_open = true;
 }
-
-size_t clb_starts = 0;
-
-void PackSignatures::start_signature(const t_logical_block_type* cluster_type) {
-    // g_logfile << "START SIGNATURE" << std::endl;
-    pb_graph_nodes_ordered_.clear();
-    atom_to_primitive_signature_.clear();
-
-    clb_starts++;
-
-    auto it = std::find(cluster_types_.begin(), cluster_types_.end(), cluster_type);
-    if (it != cluster_types_.end()) {
-        // existing cluster type
-        at_node_ = cluster_signatures_[std::distance(cluster_types_.begin(), it)];
-        at_node_->visits++;
-        return;
-    }
-    // new cluster type
-    at_node_ = new PackSignatureNode;
-    at_node_->visits = 1;
-    cluster_types_.push_back(cluster_type);
-    cluster_signatures_.push_back(at_node_);
-}
-
-void PackSignatures::add_primitive(const t_pb_graph_node* primitive_location, const AtomBlockId blk_id) {
-    VTR_ASSERT(at_node_ != nullptr);
-
-    PrimitiveSignature* signature = this->generate_primitive_signature(primitive_location, blk_id);
-
-    // Determine whether path with this primitive signature already exists
-    for(size_t i = 0; i < at_node_->child_signatures.size(); i++) {
-        if (*at_node_->child_signatures[i] == *signature) {
-            VTR_ASSERT(at_node_->child_nodes.size() > i);
-            delete signature;
-            at_node_->child_signatures[i]->blk_id = blk_id;
-            at_node_ = at_node_->child_nodes[i];
-            at_node_->visits++;
-            return;
-        }
-    }
-
-    // This is a new path, so add signature and create a new child node
-    at_node_->child_signatures.push_back(signature);
-    atom_to_primitive_signature_.push_back(std::make_pair(blk_id, signature));
-
-    PackSignatureNode* new_node = new PackSignatureNode;
-    new_node->parent = at_node_;
-    new_node->signature = signature;
-    at_node_->child_nodes.push_back(new_node);
-
-    at_node_ = new_node;
-    at_node_->visits = 1;
-}
-
-PrimitiveSignature* PackSignatures::generate_primitive_signature(const t_pb_graph_node* primitive_location, const AtomBlockId blk_id) {
-    PrimitiveSignature* signature = new PrimitiveSignature;
-    signature->primitive_location = primitive_location;
-    signature->blk_id = blk_id;
-
-    const AtomNetlist& atom_netlist = g_vpr_ctx.atom().netlist();
-
-    AtomNetlist::pin_range input_pins = atom_netlist.block_input_pins(blk_id);
-    signature->num_drivers = input_pins.size();
-
-    // Identify any source primitives which have already been mapped to this cluster
-    for (AtomPinId pin_id : input_pins) {
-        AtomNetId net_id = atom_netlist.pin_net(pin_id);
-        AtomBlockId driver_blk_id = atom_netlist.net_driver_block(net_id);
-        VTR_ASSERT(driver_blk_id != AtomBlockId::INVALID());
-
-        // Follow tree back to root, looking for if any placed primitives drive this primitive
-        for (PackSignatureNode* probe = at_node_; probe->parent != nullptr; probe = probe->parent) {
-            if (driver_blk_id == probe->signature->blk_id) {
-                signature->intracluster_drivers.push_back(probe->signature->primitive_location);
-            }
-        }
-    }
-
-    // pin_range order could differ between equivalent clusters, so sort the input primitive pointers
-    // to ensure that signatures are comparable.
-    std::sort(signature->intracluster_drivers.begin(), signature->intracluster_drivers.end());
-
-    // TODO: signature needs to encode distinctions between different output pins (good enough for now for characterization)
-    signature->num_driven = 0;
-    for (AtomPinId pin_id : atom_netlist.block_output_pins(blk_id)) {
-        AtomNetId net_id = atom_netlist.pin_net(pin_id);
-        signature->num_driven += atom_netlist.net_sinks(net_id).size();
-    }
-
-    // Since this block could have arbitrarily many sinks, rather than check all the sinks of this block
-    // to see if they are already in the cluster, the search space is reduced if we instead check to see
-    // if the source of any of the blocks already packed in this cluster is this block.
-    for (PackSignatureNode* probe = at_node_; probe->parent != nullptr; probe = probe->parent) {
-        input_pins = atom_netlist.block_input_pins(probe->signature->blk_id);
-        for (AtomPinId pin_id : input_pins) {
-            AtomNetId net_id = atom_netlist.pin_net(pin_id);
-            AtomBlockId driver_blk_id = atom_netlist.net_driver_block(net_id);
-            VTR_ASSERT(driver_blk_id != AtomBlockId::INVALID());
-
-            if (driver_blk_id == blk_id) {
-                const t_pb_graph_node* driven_primitive_location = probe->signature->primitive_location;
-                signature->intracluster_driven.push_back(driven_primitive_location);
-                break;
-            }
-        }
-    }
-
-    return signature;
-}
-
-size_t total_finalized_clusters = 0;
-
-static void recurse_placement_dependent(
-    const PackSignatureNode* node,
-    size_t depth
-) {
-    if (node->parent != nullptr) {
-        for (size_t i = 0; i < depth; i++) g_logfile << "| ";
-
-        std::string intracluster_drivers_string = "{ ";
-        for (size_t i = 0; i < node->signature->intracluster_drivers.size(); i++) {
-            intracluster_drivers_string += std::format("<{:#08x}, {}>",
-                                                       reinterpret_cast<uintptr_t>(node->signature->intracluster_drivers[i]),
-                                                       node->signature->intracluster_drivers[i]->pb_type->name);
-            if (i < node->signature->intracluster_drivers.size() - 1) {
-                intracluster_drivers_string += ", ";
-            }
-        }
-        intracluster_drivers_string += " }";
-
-        std::string intracluster_driven_string = "{ ";
-        for (size_t i = 0; i < node->signature->intracluster_driven.size(); i++) {
-            intracluster_driven_string += std::format("<{:#08x}, {}>",
-                                                       reinterpret_cast<uintptr_t>(node->signature->intracluster_driven[i]),
-                                                       node->signature->intracluster_driven[i]->pb_type->name);
-            if (i < node->signature->intracluster_driven.size() - 1) {
-                intracluster_driven_string += ", ";
-            }
-        }
-        intracluster_driven_string += " }";
-
-        g_logfile << std::format("primitive_location: <{:#08x}, {}>, num_drivers: {}, drivers: {}, num_driven: {}, driven: {}, visits: {}",
-                                 reinterpret_cast<uintptr_t>(node->signature->primitive_location),
-                                 node->signature->primitive_location->pb_type->name,
-                                 node->signature->num_drivers,
-                                 intracluster_drivers_string,
-                                 node->signature->num_driven,
-                                 intracluster_driven_string,
-                                 node->visits);
-    }
-
-    if (node->legalization_cluster_ids.size() > 0) {
-        g_logfile << ", [" << node->legalization_cluster_ids.size() << " CLUSTERS]: { ";
-        for (LegalizationClusterId id : node->legalization_cluster_ids) {
-            g_logfile << id << " ";
-        }
-        g_logfile << "}";
-        total_finalized_clusters += node->legalization_cluster_ids.size();
-    }
-
-    g_logfile << std::endl;
-
-    // End of path reached
-    if (node->child_nodes.empty()) return;
-
-    for (PackSignatureNode* child_node : node->child_nodes) {
-        // if (child_node->invalid) continue;
-        recurse_placement_dependent(child_node, depth + 1);
-    }
-}
-
-// static void recurse_placement_agnostic(const PackSignatureNode* node, std::string& packing_signature_string, size_t& visits) {}
-
-void PackSignatures::log_equivalent_placement_dependent() {
-    g_logfile << "CLB_STARTS: " << clb_starts << std::endl << std::endl;
-    for (size_t i = 0; i < cluster_types_.size(); i++) {
-        if (cluster_types_[i]->name != "clb") continue;
-        g_logfile << std::format("cluster_pb_type: <{:#08x}, {}>", reinterpret_cast<uintptr_t>(cluster_types_[i]), cluster_types_[i]->name);
-        // drop_invalid(cluster_signatures_[i]);
-        recurse_placement_dependent(cluster_signatures_[i], 0);
-        g_logfile << "TOTAL FINALIZED CLUSTERS: " << total_finalized_clusters << std::endl << std::endl;
-    }
-    g_logfile << "FINALIZATION CALLS: " << finalization_calls_ << std::endl;
-}
-
-
-
-
-
-
-
-
-
-
-
-
 
