@@ -1389,9 +1389,9 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
         } else {
             VTR_LOGV(log_verbosity_ > 3, "\t\tPASSED pack molecule\n");
             for (size_t i = 0; i < molecule.atom_block_ids.size(); i++) {
-                AtomBlockId atom_blk_id = molecule.atom_block_ids[i];
-                if (atom_blk_id) {
-                    g_pack_signatures.add_primitive(primitives_list[i], atom_blk_id);
+                AtomBlockId atom_block_id = molecule.atom_block_ids[i];
+                if (atom_block_id) {
+                    g_pack_signatures.add_primitive(primitives_list[i], atom_block_id);
                 }
             }
         }
