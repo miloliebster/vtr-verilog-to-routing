@@ -130,6 +130,23 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
 // START CHARACTERIZATION ONLY CODE
 // ================================================================
 
+std::ofstream g_logfile;
+bool logfile_open = false;
+
+void try_open_logfile() {
+    if (logfile_open) return;
+
+    char date_string[64] = {};
+    time_t t = time(NULL);
+    strftime(date_string, sizeof(date_string), "%F_%H-%M-%S", localtime(&t));
+    std::string logfile_path = "char_";
+    logfile_path += date_string;
+    logfile_path += ".txt";
+    g_logfile.open(logfile_path);
+    std::atexit([](){ g_logfile.close(); });
+    logfile_open = true;
+}
+
 size_t total_finalized_clusters = 0;
 
 static void recurse_placement_dependent(
@@ -167,13 +184,21 @@ static void recurse_placement_dependent(
                                  node->visits);
     }
 
-    if (node->legalization_cluster_ids.size() > 0) {
-        g_logfile << " [" << node->legalization_cluster_ids.size() << " CLUSTERS]: { ";
-        for (LegalizationClusterId id : node->legalization_cluster_ids) {
-            g_logfile << id << " ";
+    if (node->successful_legalization_cluster_ids.size() > 0) {
+        g_logfile << " [" << node->successful_legalization_cluster_ids.size() << " CLUSTERS]: { ";
+        for (size_t i = 0; i < node->successful_legalization_cluster_ids.size(); i++) {
+            g_logfile << node->successful_legalization_cluster_ids[i] << ((node->successful_legalization_cluster_detailedness[i]) ? "!" : "") << " ";
         }
         g_logfile << "}";
-        total_finalized_clusters += node->legalization_cluster_ids.size();
+        total_finalized_clusters += node->successful_legalization_cluster_ids.size();
+    }
+
+    if (node->failed_legalization_cluster_ids.size() > 0) {
+        g_logfile << " [" << node->failed_legalization_cluster_ids.size() << " FAILED]: { ";
+        for (size_t i = 0; i < node->failed_legalization_cluster_ids.size(); i++) {
+            g_logfile << node->failed_legalization_cluster_ids[i] << ((node->failed_legalization_cluster_detailedness[i]) ? "!" : "") << " ";
+        }
+        g_logfile << "}";
     }
 
     g_logfile << std::endl;
@@ -193,22 +218,8 @@ void PackSignatureTree::log_equivalent() {
         recurse_placement_dependent(signatures_[i], 0);
         g_logfile << "TOTAL FINALIZED CLUSTERS: " << total_finalized_clusters << std::endl << std::endl;
     }
+    g_logfile << "SPECULATIVE LEGALIZATION SUCCESS TIME: " << speculative_legalization_success_duration << std::endl;
+    g_logfile << "SPECULATIVE LEGALIZATION FAILURE TIME: " << speculative_legalization_failure_duration << std::endl;
+    g_logfile << "DETAILED LEGALIZATION SUCCESS TIME: " << detailed_legalization_success_duration << std::endl;
+    g_logfile << "DETAILED LEGALIZATION FAILURE TIME: " << detailed_legalization_failure_duration << std::endl;
 }
-
-std::ofstream g_logfile;
-bool logfile_open = false;
-
-void try_open_logfile() {
-    if (logfile_open) return;
-
-    char date_string[64] = {};
-    time_t t = time(NULL);
-    strftime(date_string, sizeof(date_string), "%F_%H-%M-%S", localtime(&t));
-    std::string logfile_path = "char_";
-    logfile_path += date_string;
-    logfile_path += ".txt";
-    g_logfile.open(logfile_path);
-    std::atexit([](){ g_logfile.close(); });
-    logfile_open = true;
-}
-

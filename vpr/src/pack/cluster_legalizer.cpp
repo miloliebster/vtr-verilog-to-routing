@@ -38,6 +38,7 @@
 #include "vtr_vector.h"
 #include "vtr_vector_map.h"
 
+#include <chrono>
 #include "characterization_logs.h"
 
 /*
@@ -439,7 +440,7 @@ try_place_atom_block_rec(const t_pb_graph_node* pb_graph_node,
                          vtr::vector_map<AtomBlockId, LegalizationClusterId>& atom_cluster,
                          const PackMoleculeId molecule_id,
                          t_lb_router_data* router_data,
-                         int verbosity,
+                         int verbosity, // XXX
                          const Prepacker& prepacker,
                          const vtr::vector_map<MoleculeChainId, t_clustering_chain_info>& clustering_chain_info,
                          AtomPBBimap& atom_to_pb) {
@@ -1218,14 +1219,66 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
             break; /* no more candidate primitives available, this molecule will not pack, return fail */
         }
 
+        AtomBlockId atom_blk_id; // XXX
         block_pack_status = e_block_pack_status::BLK_PASSED;
         size_t failed_location = 0;
         for (size_t i_mol = 0; i_mol < molecule.atom_block_ids.size() && block_pack_status == e_block_pack_status::BLK_PASSED; i_mol++) {
             VTR_ASSERT((primitives_list[i_mol] == nullptr) == (!molecule.atom_block_ids[i_mol]));
             failed_location = i_mol + 1;
-            AtomBlockId atom_blk_id = molecule.atom_block_ids[i_mol];
+            // AtomBlockId atom_blk_id = molecule.atom_block_ids[i_mol]; XXX
+            atom_blk_id = molecule.atom_block_ids[i_mol]; // XXX
             if (!atom_blk_id.is_valid())
                 continue;
+
+            // XXX begin
+            if (int(atom_blk_id) == 6052 || int(atom_blk_id) == 6067) {
+                g_logfile << "\nINFO FOR atom_blk_id=" << atom_blk_id << std::endl;
+                g_logfile << "  block_name=" << atom_ctx.netlist().block_name(atom_blk_id) << std::endl;
+                g_logfile << "  block_is_combinational=" << atom_ctx.netlist().block_is_combinational(atom_blk_id) << std::endl;
+                g_logfile << "  block_attrs=" << std::endl;
+                for (auto attr : atom_ctx.netlist().block_attrs(atom_blk_id)) {
+                    g_logfile << "    <" << attr.first << ", " << attr.second << ">" << std::endl;
+                }
+                g_logfile << "  Clock Ports:" << std::endl;
+                for (auto port_id : atom_ctx.netlist().block_clock_ports(atom_blk_id)) {
+                    g_logfile << "    Port: " << atom_ctx.netlist().port_name(port_id) << " " << size_t(port_id) << std::endl;
+                    for (auto pin_id : atom_ctx.netlist().port_pins(port_id)) {
+                        g_logfile << "    Pin: " << pin_id << std::endl;
+                    }
+                }
+                g_logfile << "  Input Ports:" << std::endl;
+                for (auto port_id : atom_ctx.netlist().block_input_ports(atom_blk_id)) {
+                    g_logfile << "    Port: " << atom_ctx.netlist().port_name(port_id) << " " << size_t(port_id) << std::endl;
+                    for (auto pin_id : atom_ctx.netlist().port_pins(port_id)) {
+                        g_logfile << "      Pin: " << pin_id << std::endl;
+                        AtomNetId net_id = atom_ctx.netlist().pin_net(pin_id);
+                        g_logfile << "        Net: " << atom_ctx.netlist().net_name(net_id) << " " << net_id << std::endl;
+                        g_logfile << "        Net Is Constant: " << atom_ctx.netlist().net_is_constant(net_id) << std::endl;
+                        auto net_driver_block_id = atom_ctx.netlist().net_driver_block(net_id);
+                        g_logfile << "        Net Driver Block: " << atom_ctx.netlist().block_name(net_driver_block_id) << " " << net_driver_block_id << std::endl;
+                        auto net_driver_pin_id = atom_ctx.netlist().net_driver(net_id);
+                        auto net_driver_port_id = atom_ctx.netlist().pin_port(net_driver_pin_id);
+                        g_logfile << "        Net Driver Port Name: " << atom_ctx.netlist().port_name(net_driver_port_id) << std::endl;
+                    }
+                }
+                g_logfile << "  Output Ports:" << std::endl;
+                for (auto port_id : atom_ctx.netlist().block_output_ports(atom_blk_id)) {
+                    g_logfile << "    Port: " << atom_ctx.netlist().port_name(port_id) << " " << size_t(port_id) << std::endl;
+                    for (auto pin_id : atom_ctx.netlist().port_pins(port_id)) {
+                        g_logfile << "      Pin: " << pin_id << std::endl;
+                        AtomNetId net_id = atom_ctx.netlist().pin_net(pin_id);
+                        g_logfile << "        Net: " << atom_ctx.netlist().net_name(net_id) << " " << net_id << std::endl;
+                        for (auto sink_pin_id : atom_ctx.netlist().net_sinks(net_id)) {
+                            auto net_sink_block_id = atom_ctx.netlist().pin_block(sink_pin_id);
+                            g_logfile << "        Net Sink Block: " << atom_ctx.netlist().block_name(net_sink_block_id) << " " << net_sink_block_id << std::endl;
+                        }
+                    }
+                }
+            }
+            // XXX end
+
+
+
             // NOTE: This parent variable is only used in the recursion of this
             //       function.
             t_pb* parent = nullptr;
@@ -1288,18 +1341,31 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
             t_mode_selection_status mode_status;
             bool is_routed = false;
             bool do_detailed_routing_stage = (cluster_legalization_strategy_ == ClusterLegalizationStrategy::FULL);
+            std::chrono::duration<double> legalization_duration;
             if (do_detailed_routing_stage) {
+                auto start_time = std::chrono::high_resolution_clock::now(); // XXX
+                int attempt = 0; // XXX
                 do {
                     reset_intra_lb_route(cluster.router_data);
-                    is_routed = try_intra_lb_route(cluster.router_data, log_verbosity_, &mode_status);
+                    // is_routed = try_intra_lb_route(cluster.router_data, log_verbosity_, &mode_status);
+                    if (int(cluster_id) == 143) VTR_LOG("ID 143 DETAILED PACKING ATTEMPT %d with atom_blk_id=%d:\n", attempt, int(atom_blk_id)); // XXX
+                    is_routed = try_intra_lb_route(cluster.router_data, size_t(cluster_id) == 143 ? 4 : log_verbosity_, &mode_status); // XXX
+                    if (int(cluster_id) == 143) VTR_LOG("SUCCESS=%d:\n", int(is_routed)); // XXX
+                    attempt++;
                 } while (do_detailed_routing_stage && mode_status.is_mode_issue());
-            }
+                auto end_time = std::chrono::high_resolution_clock::now(); // XXX
+                legalization_duration = end_time - start_time; // XXX
+            } else { // XXX
+                if (int(cluster_id) == 143) VTR_LOG("ID 143 SPECULATIVE atom_block_id=%d:\n", int(atom_blk_id)); // XXX
+            } // XXX
 
             if (do_detailed_routing_stage && !is_routed) {
+                g_pack_signatures.detailed_legalization_failure_duration += legalization_duration; // XXX
                 /* Cannot pack */
                 VTR_LOGV(log_verbosity_ > 4, "\t\t\tFAILED Detailed Routing Legality\n");
                 block_pack_status = e_block_pack_status::BLK_FAILED_ROUTE;
             } else {
+                g_pack_signatures.detailed_legalization_success_duration += legalization_duration; // XXX
                 /* Pack successful, commit
                  * TODO: SW Engineering note - may want to update cluster stats here too instead of doing it outside
                  */
@@ -1602,7 +1668,9 @@ bool ClusterLegalizer::check_cluster_legality(LegalizationClusterId cluster_id) 
     // route on the cluster. If it succeeds, the cluster is fully legal.
     t_mode_selection_status mode_status;
     LegalizationCluster& cluster = legalization_clusters_[cluster_id];
-    return try_intra_lb_route(cluster.router_data, log_verbosity_, &mode_status);
+    // return try_intra_lb_route(cluster.router_data, log_verbosity_, &mode_status);
+    if (int(cluster_id) == 143) VTR_LOG("ID 143 SPECULATIVE PACKING ATTEMPT:\n"); // XXX
+    return try_intra_lb_route(cluster.router_data, int(cluster_id) == 143 ? 4 : log_verbosity_, &mode_status);
 }
 
 ClusterLegalizer::ClusterLegalizer(const AtomNetlist& atom_netlist,
