@@ -32,8 +32,8 @@ void PackSignatureTree::add_primitive(const t_pb_graph_node* primitive_pb_graph_
 
     PackSignaturePrimitive* primitive = this->generate_primitive(primitive_pb_graph_node, atom_block_id);
 
-    // Determine whether path with this primitive primitive already exists.
-    // Similar packing primitives are likely to appear close to eachother due to greedy candidate selection,
+    // Determine whether path with this primitive signature already exists.
+    // Similar packing signatures are likely to appear close to eachother due to greedy candidate selection,
     // so iterate over the list in reverse to take better advantage of this locality.
     for (ssize_t i = at_node_->child_primitives.size() - 1; i >= 0 ; i--) {
         if (*at_node_->child_primitives[i] == *primitive) {
@@ -63,30 +63,34 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
     primitive->atom_block_id = atom_block_id;
 
     const AtomNetlist& atom_netlist = g_vpr_ctx.atom().netlist();
-    AtomNetlist::pin_range source_input_pins = atom_netlist.block_input_pins(atom_block_id);
-    primitive->num_incoming_sources = source_input_pins.size();
+    AtomNetlist::pin_range primitive_input_pins = atom_netlist.block_input_pins(atom_block_id);
+    primitive->num_incoming_sources = primitive_input_pins.size();
 
     // Identify if any primitives that have already been placed drive this new primitive
-    for (AtomPinId primitive_input_pin_id : source_input_pins) {
+    for (AtomPinId primitive_input_pin_id : primitive_input_pins) {
         AtomNetId primitive_input_pin_net_id = atom_netlist.pin_net(primitive_input_pin_id);
         AtomBlockId source_atom_block_id = atom_netlist.net_driver_block(primitive_input_pin_net_id);
         VTR_ASSERT(source_atom_block_id != AtomBlockId::INVALID());
 
         // Walk up the tree back to the seed primitive, checking if any already placed primitive is the source of this pin
+        bool has_local_driver = false;
         for (PackSignatureTreeNode* probe = at_node_; probe->parent != nullptr; probe = probe->parent) {
             if (source_atom_block_id == probe->primitive->atom_block_id) {
                 AtomPinId source_pin_id = atom_netlist.net_driver(primitive_input_pin_net_id);
                 AtomPortId source_port_id = atom_netlist.pin_port(source_pin_id);
-
                 PackSignatureConnection source_connection = {
                     probe->primitive->pb_graph_node,
                     atom_netlist.port_name(source_port_id),
                     atom_netlist.pin_port_bit(source_pin_id)
                 };
-
                 primitive->intracluster_sources_to_primitive_inputs.push_back(source_connection);
+                has_local_driver = true;
+                break;
             }
         }
+        if (has_local_driver) continue;
+
+
     }
 
     // pin_range order could differ between equivalent clusters, so sort the sources list to ensure that primitives are comparable.
@@ -222,4 +226,5 @@ void PackSignatureTree::log_equivalent() {
     g_logfile << "SPECULATIVE LEGALIZATION FAILURE TIME: " << speculative_legalization_failure_duration << std::endl;
     g_logfile << "DETAILED LEGALIZATION SUCCESS TIME: " << detailed_legalization_success_duration << std::endl;
     g_logfile << "DETAILED LEGALIZATION FAILURE TIME: " << detailed_legalization_failure_duration << std::endl;
+    g_logfile << "SIGNATURE PROCESSING TIME: " << signature_processing_duration << std::endl;
 }

@@ -107,6 +107,7 @@ public:
     std::chrono::duration<double> speculative_legalization_failure_duration;
     std::chrono::duration<double> detailed_legalization_success_duration;
     std::chrono::duration<double> detailed_legalization_failure_duration;
+    std::chrono::duration<double> signature_processing_duration;
 
     PackSignatureTree() {}
 

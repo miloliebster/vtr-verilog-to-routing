@@ -1457,7 +1457,10 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
             for (size_t i = 0; i < molecule.atom_block_ids.size(); i++) {
                 AtomBlockId atom_block_id = molecule.atom_block_ids[i];
                 if (atom_block_id) {
+                    auto start_time = std::chrono::high_resolution_clock::now(); // XXX
                     g_pack_signatures.add_primitive(primitives_list[i], atom_block_id);
+                    auto end_time = std::chrono::high_resolution_clock::now(); // XXX
+                    g_pack_signatures.signature_processing_duration += end_time - start_time;
                 }
             }
         }
