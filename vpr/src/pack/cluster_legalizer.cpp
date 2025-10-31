@@ -38,6 +38,7 @@
 #include "vtr_vector.h"
 #include "vtr_vector_map.h"
 
+#include <chrono>
 #include "characterization_logs.h"
 
 /*
@@ -1288,18 +1289,24 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
             t_mode_selection_status mode_status;
             bool is_routed = false;
             bool do_detailed_routing_stage = (cluster_legalization_strategy_ == ClusterLegalizationStrategy::FULL);
+            std::chrono::duration<double> legalization_duration;
             if (do_detailed_routing_stage) {
+                auto start_time = std::chrono::high_resolution_clock::now(); // XXX
                 do {
                     reset_intra_lb_route(cluster.router_data);
                     is_routed = try_intra_lb_route(cluster.router_data, log_verbosity_, &mode_status);
                 } while (do_detailed_routing_stage && mode_status.is_mode_issue());
+                auto end_time = std::chrono::high_resolution_clock::now(); // XXX
+                legalization_duration = end_time - start_time; // XXX
             }
 
             if (do_detailed_routing_stage && !is_routed) {
+                g_pack_signatures.detailed_legalization_failure_duration += legalization_duration; // XXX
                 /* Cannot pack */
                 VTR_LOGV(log_verbosity_ > 4, "\t\t\tFAILED Detailed Routing Legality\n");
                 block_pack_status = e_block_pack_status::BLK_FAILED_ROUTE;
             } else {
+                g_pack_signatures.detailed_legalization_success_duration += legalization_duration; // XXX
                 /* Pack successful, commit
                  * TODO: SW Engineering note - may want to update cluster stats here too instead of doing it outside
                  */

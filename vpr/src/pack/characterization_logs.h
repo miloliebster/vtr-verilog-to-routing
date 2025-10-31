@@ -50,7 +50,11 @@ struct PackSignatureExternalIO {
 
     // identify the legalization cluster IDs that terminate at this node
     // XXX is this required for anything besides stats?
-    std::vector<LegalizationClusterId> legalization_cluster_ids;
+    std::vector<LegalizationClusterId> successful_legalization_cluster_ids;
+    std::vector<bool> successful_legalization_cluster_detailedness;
+
+    std::vector<LegalizationClusterId> failed_legalization_cluster_ids;
+    std::vector<bool> failed_legalization_cluster_detailedness;
 
     bool operator==(PackSignatureExternalIO const& rhs) const {
         if (this->shared_cluster_inputs.size() != rhs.shared_cluster_inputs.size()) return false;
@@ -103,6 +107,7 @@ struct PackSignaturePrimitive {
 
 struct PackSignatureTreeNode {
     size_t visits = 0; // XXX Only useful for characterization. Can be removed for final implementation.
+
     PackSignaturePrimitive* primitive = nullptr;
     PackSignatureTreeNode* parent = nullptr;
 
@@ -122,6 +127,15 @@ struct PackSignatureTreeNode {
 
 class PackSignatureTree {
 public:
+    bool detailed_legalization = false;
+    std::chrono::duration<double> speculative_legalization_success_duration;
+    std::chrono::duration<double> speculative_legalization_failure_duration;
+    std::chrono::duration<double> detailed_legalization_success_duration;
+    std::chrono::duration<double> detailed_legalization_failure_duration;
+
+    size_t memory_usage_scratch = 0;
+    size_t total_memory_used = 0;
+
     PackSignatureTree() {}
 
     ~PackSignatureTree() {
@@ -132,6 +146,7 @@ public:
     void add_primitive(const t_pb_graph_node* primitive_pb_graph_node, const AtomBlockId atom_block_id);
 
     void finalize_path(LegalizationClusterId legalization_cluster_id);
+    void fail_path(LegalizationClusterId legalization_cluster_id);
 
     void log_equivalent(); // XXX characterization only
 

@@ -55,6 +55,7 @@
 #include "vpr_context.h"
 #include "vtr_math.h"
 
+#include <chrono>
 #include "characterization_logs.h"
 
 namespace {
@@ -169,6 +170,7 @@ GreedyClusterer::do_clustering(ClusterLegalizer& cluster_legalizer,
         // Try to grow a cluster from the seed molecule without doing intra-lb
         // route for each molecule (i.e. just use faster but not fully
         // conservative legality checks).
+        g_pack_signatures.detailed_legalization = false;
         LegalizationClusterId new_cluster_id = try_grow_cluster(seed_mol_id,
                                                                 candidate_selector,
                                                                 ClusterLegalizationStrategy::SKIP_INTRA_LB_ROUTE,
@@ -183,6 +185,7 @@ GreedyClusterer::do_clustering(ClusterLegalizer& cluster_legalizer,
             // If the previous strategy failed, try to grow the cluster again,
             // but this time perform full legalization for each molecule added
             // to the cluster.
+            g_pack_signatures.detailed_legalization = true;
             new_cluster_id = try_grow_cluster(seed_mol_id,
                                               candidate_selector,
                                               ClusterLegalizationStrategy::FULL,
@@ -325,7 +328,9 @@ LegalizationClusterId GreedyClusterer::try_grow_cluster(PackMoleculeId seed_mol_
         // If the legalizer did not check everything for every molecule,
         // need to check that the full cluster is legal (need to perform
         // intra-lb routing).
+        auto start_time = std::chrono::high_resolution_clock::now(); // XXX
         bool is_cluster_legal = cluster_legalizer.check_cluster_legality(legalization_cluster_id);
+        auto end_time = std::chrono::high_resolution_clock::now(); // XXX
 
         if (!is_cluster_legal) {
             // If the cluster is not legal, undo the cluster.
@@ -335,8 +340,11 @@ LegalizationClusterId GreedyClusterer::try_grow_cluster(PackMoleculeId seed_mol_
             cluster_legalizer.destroy_cluster(legalization_cluster_id);
             cluster_legalizer.compress();
             // Cluster failed to grow.
+            g_pack_signatures.speculative_legalization_failure_duration += end_time - start_time;
+            g_pack_signatures.fail_path(legalization_cluster_id);
             return LegalizationClusterId();
         }
+        g_pack_signatures.speculative_legalization_success_duration += end_time - start_time;
     }
 
     // A legal cluster must have been created by this point.

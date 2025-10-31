@@ -29,6 +29,7 @@ void PackSignatureTree::start_pack_signature(const t_logical_block_type* cluster
     at_node_->visits = 1; // XXX characterization
     cluster_logical_block_types_.push_back(cluster_logical_block_type);
     signatures_.push_back(at_node_);
+    total_memory_used += sizeof(PackSignatureTreeNode) + sizeof(PackSignatureTreeNode*);
 }
 
 void PackSignatureTree::add_primitive(const t_pb_graph_node* primitive_pb_graph_node, const AtomBlockId atom_block_id) {
@@ -52,10 +53,12 @@ void PackSignatureTree::add_primitive(const t_pb_graph_node* primitive_pb_graph_
     // This is a new diverging path, so add the primitive to the tree and create a new child node
     at_node_->child_primitives.push_back(primitive);
 
-    PackSignatureTreeNode* new_node= new PackSignatureTreeNode;
+    PackSignatureTreeNode* new_node = new PackSignatureTreeNode;
     new_node->parent = at_node_;
     new_node->primitive = primitive;
     at_node_->child_nodes.push_back(new_node);
+    memory_usage_scratch += sizeof(PackSignatureTreeNode) + sizeof(PackSignatureTreeNode*);
+    total_memory_used += memory_usage_scratch;
 
     at_node_ = new_node;
     at_node_->visits = 1; // XXX characterization
@@ -65,6 +68,9 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
     PackSignaturePrimitive* primitive = new PackSignaturePrimitive;
     primitive->pb_graph_node = primitive_pb_graph_node;
     primitive->atom_block_id = atom_block_id;
+
+    memory_usage_scratch = sizeof(PackSignaturePrimitive) + sizeof(PackSignaturePrimitive*);
+
 
     const AtomNetlist& atom_netlist = g_vpr_ctx.atom().netlist();
     AtomNetlist::pin_range primitive_input_pins = atom_netlist.block_input_pins(atom_block_id);
@@ -100,6 +106,7 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
                     atom_netlist.pin_port_bit(source_pin_id)
                 };
                 primitive->intracluster_sources_to_primitive_inputs.push_back(source_connection);
+                memory_usage_scratch += sizeof(PackSignatureConnection);
 
                 ExternalOutputRecord& record = output_nets_[primitive_input_pin_net_id];
                 VTR_ASSERT(record.external_sinks_count > 0);
@@ -155,6 +162,7 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
                     atom_netlist.pin_port_bit(primitive_output_pin_id)
                 };
                 primitive->intracluster_sinks_of_primitive_outputs.push_back(sink_connection);
+                memory_usage_scratch += sizeof(PackSignatureConnection);
 
                 ExternalOutputRecord& record = output_nets_[potential_sink_net_id];
                 VTR_ASSERT(record.external_sinks_count > 0);
@@ -170,10 +178,48 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
 
 void PackSignatureTree::finalize_path(LegalizationClusterId legalization_cluster_id) {
     PackSignatureExternalIO* external_io = new PackSignatureExternalIO;
+    size_t memory_used = sizeof(PackSignatureExternalIO) + sizeof(PackSignatureExternalIO*);
 
     for (auto it = input_nets_.begin(); it != input_nets_.end(); it++) {
         if (output_nets_.count(it->first) != 0) continue; // net is driven from inside cluster; not an external source
-        if (it->second.size() < 2) continue; // net only drives one pin; inclusion not nescessary
+        if (it->second.size() < 2) continue; // net only drives one pin; inclusion not necessary
+        std::sort(it->second.begin(), it->second.end());
+        external_io->shared_cluster_inputs.push_back(it->second);
+        memory_used += sizeof(std::vector<PackSignatureConnection>) + it->second.size() * sizeof(PackSignatureConnection);
+    }
+    std::sort(external_io->shared_cluster_inputs.begin(), external_io->shared_cluster_inputs.end(), [](auto a, auto b) {
+        if (a.size() != b.size()) return a.size() < b.size();
+        for (size_t i = 0; i < a.size(); i++) if (a[i] != b[i]) return a[i] < b[i];
+        return false;
+    });
+
+    for (auto it = output_nets_.begin(); it != output_nets_.end(); it++) {
+        if (it->second.external_sinks_count == 0) continue; // net only drives pins inside cluster
+        external_io->cluster_outputs.push_back(it->second.connection);
+        memory_used += sizeof(PackSignatureConnection);
+    }
+    std::sort(external_io->cluster_outputs.begin(), external_io->cluster_outputs.end());
+
+    for (auto leaf_node : at_node_->leaf_nodes) {
+        if (*external_io == *leaf_node) {
+            leaf_node->successful_legalization_cluster_ids.push_back(legalization_cluster_id);
+            leaf_node->successful_legalization_cluster_detailedness.push_back(this->detailed_legalization);
+            delete external_io;
+            return;
+        }
+    }
+    external_io->successful_legalization_cluster_ids.push_back(legalization_cluster_id);
+    external_io->successful_legalization_cluster_detailedness.push_back(this->detailed_legalization);
+    at_node_->leaf_nodes.push_back(external_io);
+    total_memory_used += memory_used;
+}
+
+void PackSignatureTree::fail_path(LegalizationClusterId legalization_cluster_id) {
+    PackSignatureExternalIO* external_io = new PackSignatureExternalIO;
+
+    for (auto it = input_nets_.begin(); it != input_nets_.end(); it++) {
+        if (output_nets_.count(it->first) != 0) continue; // net is driven from inside cluster; not an external source
+        if (it->second.size() < 2) continue; // net only drives one pin; inclusion not necessary
         std::sort(it->second.begin(), it->second.end());
         external_io->shared_cluster_inputs.push_back(it->second);
     }
@@ -191,12 +237,14 @@ void PackSignatureTree::finalize_path(LegalizationClusterId legalization_cluster
 
     for (auto leaf_node : at_node_->leaf_nodes) {
         if (*external_io == *leaf_node) {
-            leaf_node->legalization_cluster_ids.push_back(legalization_cluster_id);
+            leaf_node->failed_legalization_cluster_ids.push_back(legalization_cluster_id);
+            leaf_node->failed_legalization_cluster_detailedness.push_back(this->detailed_legalization);
             delete external_io;
             return;
         }
     }
-    external_io->legalization_cluster_ids.push_back(legalization_cluster_id);
+    external_io->failed_legalization_cluster_ids.push_back(legalization_cluster_id);
+    external_io->failed_legalization_cluster_detailedness.push_back(this->detailed_legalization);
     at_node_->leaf_nodes.push_back(external_io);
 }
 
@@ -273,12 +321,26 @@ static void recurse_placement_dependent(
                                  shared_cluster_inputs_string,
                                  cluster_outputs_string);
 
-        g_logfile << " [" << leaf_node->legalization_cluster_ids.size() << " CLUSTERS]: { ";
-        for (LegalizationClusterId id : leaf_node->legalization_cluster_ids) {
-            g_logfile << id << " ";
+        if (leaf_node->successful_legalization_cluster_ids.size() > 0) {
+            VTR_ASSERT(leaf_node->failed_legalization_cluster_ids.size() == 0);
+            g_logfile << " [" << leaf_node->successful_legalization_cluster_ids.size() << " CLUSTERS]: { ";
+            for (size_t i = 0; i < leaf_node->successful_legalization_cluster_ids.size(); i++) {
+                g_logfile << leaf_node->successful_legalization_cluster_ids[i];
+                g_logfile << (leaf_node->successful_legalization_cluster_detailedness[i] ? "! " : " ");
+            }
         }
+
+        if (leaf_node->failed_legalization_cluster_ids.size() > 0) {
+            VTR_ASSERT(leaf_node->successful_legalization_cluster_ids.size() == 0);
+            g_logfile << " [" << leaf_node->failed_legalization_cluster_ids.size() << " FAILED]: { ";
+            for (size_t i = 0; i < leaf_node->failed_legalization_cluster_ids.size(); i++) {
+                g_logfile << leaf_node->failed_legalization_cluster_ids[i];
+                g_logfile << (leaf_node->failed_legalization_cluster_detailedness[i] ? "! " : " ");
+            }
+        }
+
         g_logfile << "}";
-        total_finalized_clusters += leaf_node->legalization_cluster_ids.size();
+        total_finalized_clusters += leaf_node->successful_legalization_cluster_ids.size();
         g_logfile << std::endl;
     }
 
@@ -298,6 +360,12 @@ void PackSignatureTree::log_equivalent() {
         recurse_placement_dependent(signatures_[i], 0);
         g_logfile << "TOTAL FINALIZED CLUSTERS: " << total_finalized_clusters << std::endl << std::endl;
     }
+    g_logfile << "SPECULATIVE LEGALIZATION SUCCESS TIME: " << speculative_legalization_success_duration << std::endl;
+    g_logfile << "SPECULATIVE LEGALIZATION FAILURE TIME: " << speculative_legalization_failure_duration << std::endl;
+    g_logfile << "DETAILED LEGALIZATION SUCCESS TIME: " << detailed_legalization_success_duration << std::endl;
+    g_logfile << "DETAILED LEGALIZATION FAILURE TIME: " << detailed_legalization_failure_duration << std::endl << std::endl;
+
+    g_logfile << "SIGNATURE TREE MEMORY USEAGE: " << total_memory_used << std::endl << std::endl;
 }
 
 std::ofstream g_logfile;
