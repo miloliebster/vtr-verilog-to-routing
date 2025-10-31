@@ -1,0 +1,43 @@
+# Path to directory of circuits to use
+circuits_dir=benchmarks/verilog/koios
+
+# Path to directory of architectures to use
+archs_dir=arch/timing
+
+# Add circuits to list to sweep
+circuit_list_add=attention_layer.v
+circuit_list_add=bwave_like.float.large.v
+circuit_list_add=clstm_like.small.v
+circuit_list_add=dla_like.large.v
+circuit_list_add=eltwise_layer.v
+circuit_list_add=lenet.v
+circuit_list_add=robot_rl.v
+circuit_list_add=tdarknet_like.small.v
+circuit_list_add=tpu_like.small.os.v
+circuit_list_add=bnn.v
+circuit_list_add=bwave_like.float.small.v
+circuit_list_add=dla_like.medium.v
+circuit_list_add=gemm_layer.v
+circuit_list_add=lstm.v
+circuit_list_add=softmax.v
+circuit_list_add=test.v
+circuit_list_add=tpu_like.small.ws.v
+circuit_list_add=bwave_like.fixed.large.v
+circuit_list_add=clstm_like.large.v
+circuit_list_add=conv_layer_hls.v
+circuit_list_add=dla_like.small.v
+circuit_list_add=spmv.v
+circuit_list_add=tpu_like.large.os.v
+circuit_list_add=bwave_like.fixed.small.v
+circuit_list_add=clstm_like.medium.v
+circuit_list_add=conv_layer.v
+circuit_list_add=dnnweaver.v
+circuit_list_add=reduction_layer.v
+circuit_list_add=tdarknet_like.large.v
+circuit_list_add=tpu_like.large.ws.v
+
+# Add architectures to list to sweep
+arch_list_add=k6_frac_N10_frac_chain_depop50_mem32K_40nm.xml
+
+# Parse info and how to parse
+parse_file=vpr_standard.txt

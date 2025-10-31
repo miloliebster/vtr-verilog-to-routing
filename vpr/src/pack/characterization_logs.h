@@ -23,42 +23,65 @@ extern std::ofstream g_logfile;
 struct PackSignatureConnection {
     const t_pb_graph_node* pb_graph_node;
     std::string port_name; // TODO Just using StringId would be preferable, but access to this would need to be exposed from netlist class. Friend class?
+                           // Or should this be t_model_ports* ???
     BitIndex pin_port_bit;
 
     bool operator==(PackSignatureConnection const& rhs) const {
         if (this->pb_graph_node != rhs.pb_graph_node) return false;
         if (this->pin_port_bit != rhs.pin_port_bit) return false;
-        if (this->port_name != rhs.port_name) return false;
-        return true;
+        return this->port_name == rhs.port_name;
     }
 
     bool operator<(PackSignatureConnection const& rhs) const {
-        if (this->pb_graph_node >= rhs.pb_graph_node) return false;
-        if (this->pin_port_bit >= rhs.pin_port_bit) return false;
-        if (this->port_name.compare(rhs.port_name) >= 0) return false;
-        return true;
+        if (this->pb_graph_node != rhs.pb_graph_node) return this->pb_graph_node < rhs.pb_graph_node;
+        if (this->pin_port_bit != rhs.pin_port_bit) return this->pin_port_bit < rhs.pin_port_bit;
+        return this->port_name < rhs.port_name;
     }
 
-    // For characterization -- removable later
+    // XXX For characterization -- removable later
     std::string to_string() {
         return std::format("<<\"{}\": {:#08x}>, <\"{}\", {}>>", pb_graph_node->pb_type->name, reinterpret_cast<uintptr_t>(pb_graph_node), port_name, pin_port_bit);
     }
 };
 
+struct PackSignatureExternalIO {
+    std::vector<std::vector<PackSignatureConnection>> shared_cluster_inputs;
+    std::vector<PackSignatureConnection> cluster_outputs;
+
+    // identify the legalization cluster IDs that terminate at this node
+    // XXX is this required for anything besides stats?
+    std::vector<LegalizationClusterId> legalization_cluster_ids;
+
+    bool operator==(PackSignatureExternalIO const& rhs) const {
+        if (this->shared_cluster_inputs.size() != rhs.shared_cluster_inputs.size()) return false;
+        if (this->cluster_outputs.size() != rhs.cluster_outputs.size()) return false;
+        for (size_t i = 0; i < this->shared_cluster_inputs.size(); i++) {
+            if (this->shared_cluster_inputs[i].size() != rhs.shared_cluster_inputs[i].size()) return false;
+            for (size_t j = 0; j < this->shared_cluster_inputs[i].size(); j++) {
+                if (this->shared_cluster_inputs[i][j] != rhs.shared_cluster_inputs[i][j]) return false;
+            }
+        }
+        for (size_t i = 0; i < this->cluster_outputs.size(); i++) {
+            if (this->cluster_outputs[i] != rhs.cluster_outputs[i]) return false;
+        }
+        return true;
+    }
+};
+
+// TODO: PackSignaturePrimitive and PackSignatureTreeNode should be able to be refactored into one struct if the tree roots are handled different.
+//       Is that desirable?
 struct PackSignaturePrimitive {
     const t_pb_graph_node* pb_graph_node;
     size_t num_incoming_sources; // TODO this needs to be on a pin-by-pin basis
-    size_t num_sinks; // TODO this needs to be on a pin-by-pin basis
     std::vector<PackSignatureConnection> intracluster_sources_to_primitive_inputs;
     std::vector<PackSignatureConnection> intracluster_sinks_of_primitive_outputs;
-    AtomBlockId atom_block_id; // not part of signature per se, but referenced when backtracking
+    AtomBlockId atom_block_id; // not part of signature, but referenced when backtracking
 
     PackSignaturePrimitive() {}
 
     PackSignaturePrimitive(PackSignaturePrimitive& other) {
         this->pb_graph_node = other.pb_graph_node;
         this->num_incoming_sources = other.num_incoming_sources;
-        this->num_sinks = other.num_sinks;
         this->intracluster_sources_to_primitive_inputs = other.intracluster_sources_to_primitive_inputs;
         this->intracluster_sinks_of_primitive_outputs = other.intracluster_sinks_of_primitive_outputs;
     }
@@ -66,7 +89,6 @@ struct PackSignaturePrimitive {
     bool operator==(PackSignaturePrimitive const& rhs) const {
         if (this->pb_graph_node != rhs.pb_graph_node) return false;
         if (this->num_incoming_sources != rhs.num_incoming_sources) return false;
-        if (this->num_sinks != rhs.num_sinks) return false;
         if (this->intracluster_sources_to_primitive_inputs.size() != rhs.intracluster_sources_to_primitive_inputs.size()) return false;
         if (this->intracluster_sinks_of_primitive_outputs.size() != rhs.intracluster_sinks_of_primitive_outputs.size()) return false;
         for (size_t i = 0; i < this->intracluster_sources_to_primitive_inputs.size(); i++) {
@@ -81,19 +103,22 @@ struct PackSignaturePrimitive {
 
 struct PackSignatureTreeNode {
     size_t visits = 0; // XXX Only useful for characterization. Can be removed for final implementation.
-    std::vector<LegalizationClusterId> legalization_cluster_ids;
     PackSignaturePrimitive* primitive = nullptr;
     PackSignatureTreeNode* parent = nullptr;
 
     std::vector<PackSignaturePrimitive*> child_primitives;
     std::vector<PackSignatureTreeNode*> child_nodes;
 
+    std::vector<PackSignatureExternalIO*> leaf_nodes;
+
     PackSignatureTreeNode() {}
     ~PackSignatureTreeNode() {
         for (PackSignatureTreeNode* child_node : child_nodes) delete child_node;
         for (PackSignaturePrimitive* child_primitive : child_primitives) delete child_primitive;
+        for (PackSignatureExternalIO* leaf_node : leaf_nodes) delete leaf_node;
     }
 };
+
 
 class PackSignatureTree {
 public:
@@ -106,9 +131,7 @@ public:
     void start_pack_signature(const t_logical_block_type* cluster_logical_block_type);
     void add_primitive(const t_pb_graph_node* primitive_pb_graph_node, const AtomBlockId atom_block_id);
 
-    inline void finalize_path(LegalizationClusterId legalization_cluster_id) {
-        at_node_->legalization_cluster_ids.push_back(legalization_cluster_id);
-    }
+    void finalize_path(LegalizationClusterId legalization_cluster_id);
 
     void log_equivalent(); // XXX characterization only
 
@@ -121,6 +144,15 @@ private:
 
     // Current node for signature being constructed
     PackSignatureTreeNode* at_node_;
+
+    // External IO bookkeeping
+    struct ExternalOutputRecord {
+        PackSignatureConnection connection;
+        size_t external_sinks_count;
+    };
+
+    std::map<AtomNetId, std::vector<PackSignatureConnection>> input_nets_;
+    std::map<AtomNetId, ExternalOutputRecord> output_nets_;
 };
 
 extern PackSignatureTree g_pack_signatures; // XXX this should not be a global in the end. Part of ClusterLegalizer?
