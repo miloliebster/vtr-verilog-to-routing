@@ -35,7 +35,7 @@
 #include "cluster_router.h"
 #include "atom_pb_bimap.h"
 
-/* #define PRINT_INTRA_LB_ROUTE */
+#define PRINT_INTRA_LB_ROUTE
 
 /*****************************************************************************************
  * Internal data structures
@@ -110,7 +110,7 @@ static void save_and_reset_lb_route(t_lb_router_data* router_data);
 
 /**
  * @brief Recurse through route tree trace to populate pb pin to atom net lookup array.
- * 
+ *
  * @param pb_route Array of pb pin to atom net lookup to be populated in this routine.
  * @param net_id Atom net ID of the current net.
  * @param prev_pin_id ID of the previous pin in the route tree trace.
@@ -413,6 +413,8 @@ static bool try_expand_nodes(t_lb_router_data* router_data,
     return is_impossible;
 }
 
+extern bool g_print_this_route;
+
 /* Attempt to route routing driver/targets on the current architecture
  * Follows pathfinder negotiated congestion algorithm
  */
@@ -529,14 +531,15 @@ bool try_intra_lb_route(t_lb_router_data* router_data,
         router_data->pres_con_fac *= router_data->params.pres_fac_mult;
     }
 
+    if (g_print_this_route) {
+        if (is_routed) print_route("successful_route.txt", router_data);
+        else print_route("failed_route.txt", router_data);
+    }
+
     if (is_routed) {
         save_and_reset_lb_route(router_data);
     } else {
         //Unroutable
-#ifdef PRINT_INTRA_LB_ROUTE
-        print_route(getEchoFileName(E_ECHO_INTRA_LB_FAILED_ROUTE), router_data);
-#endif
-
         if (verbosity > 3 && !is_impossible) {
             //Report the congested nodes and associated nets
             auto congested_rr_nodes = find_congested_rr_nodes(lb_type_graph, router_data->lb_rr_node_stats);
