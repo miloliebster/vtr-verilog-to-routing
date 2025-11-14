@@ -22,30 +22,41 @@ extern std::ofstream g_logfile;
 // TODO: Need to determine if primitive has input port equivalence and handle accordingly
 struct PackSignatureConnection {
     const t_pb_graph_node* pb_graph_node;
-    std::string port_name; // TODO Just using StringId would be preferable, but access to this would need to be exposed from netlist class. Friend class?
-                           // Or should this be t_model_ports* ???
-    BitIndex pin_port_bit;
+    std::string source_port_name; // XXX it would be best to use StringID here to save space
+    BitIndex source_bit_index;
+    std::string sink_port_name;
+    BitIndex sink_bit_index;
 
     bool operator==(PackSignatureConnection const& rhs) const {
         if (this->pb_graph_node != rhs.pb_graph_node) return false;
-        if (this->pin_port_bit != rhs.pin_port_bit) return false;
-        return this->port_name == rhs.port_name;
+        if (this->source_bit_index != rhs.source_bit_index) return false;
+        if (this->sink_bit_index != rhs.sink_bit_index) return false;
+        if (this->source_port_name != rhs.source_port_name) return false;
+        return this->sink_port_name == rhs.sink_port_name;
     }
 
     bool operator<(PackSignatureConnection const& rhs) const {
         if (this->pb_graph_node != rhs.pb_graph_node) return this->pb_graph_node < rhs.pb_graph_node;
-        if (this->pin_port_bit != rhs.pin_port_bit) return this->pin_port_bit < rhs.pin_port_bit;
-        return this->port_name < rhs.port_name;
+        if (this->source_bit_index != rhs.source_bit_index) return this->source_bit_index < rhs.source_bit_index;
+        if (this->sink_bit_index != rhs.sink_bit_index) return this->sink_bit_index < rhs.sink_bit_index;
+        if (this->source_port_name != rhs.source_port_name) return this->source_port_name < rhs.source_port_name;
+        return this->sink_port_name < rhs.sink_port_name;
     }
 
     // XXX For characterization -- removable later
     std::string to_string() {
-        return std::format("<<\"{}\": {:#08x}>, <\"{}\", {}>>", pb_graph_node->pb_type->name, reinterpret_cast<uintptr_t>(pb_graph_node), port_name, pin_port_bit);
+        return std::format("<\"{}\": {:#08x}, <\"{}\", {}>, <\"{}\", {}>>",
+                           pb_graph_node->pb_type->name,
+                           reinterpret_cast<uintptr_t>(pb_graph_node),
+                           source_port_name,
+                           source_bit_index,
+                           sink_port_name,
+                           sink_bit_index);
     }
 };
 
 struct PackSignatureExternalIO {
-    std::vector<std::vector<PackSignatureConnection>> shared_cluster_inputs;
+    std::vector<std::vector<PackSignatureConnection>> cluster_inputs;
     std::vector<PackSignatureConnection> cluster_outputs;
 
     // identify the legalization cluster IDs that terminate at this node
@@ -57,12 +68,12 @@ struct PackSignatureExternalIO {
     std::vector<bool> failed_legalization_cluster_detailedness;
 
     bool operator==(PackSignatureExternalIO const& rhs) const {
-        if (this->shared_cluster_inputs.size() != rhs.shared_cluster_inputs.size()) return false;
+        if (this->cluster_inputs.size() != rhs.cluster_inputs.size()) return false;
         if (this->cluster_outputs.size() != rhs.cluster_outputs.size()) return false;
-        for (size_t i = 0; i < this->shared_cluster_inputs.size(); i++) {
-            if (this->shared_cluster_inputs[i].size() != rhs.shared_cluster_inputs[i].size()) return false;
-            for (size_t j = 0; j < this->shared_cluster_inputs[i].size(); j++) {
-                if (this->shared_cluster_inputs[i][j] != rhs.shared_cluster_inputs[i][j]) return false;
+        for (size_t i = 0; i < this->cluster_inputs.size(); i++) {
+            if (this->cluster_inputs[i].size() != rhs.cluster_inputs[i].size()) return false;
+            for (size_t j = 0; j < this->cluster_inputs[i].size(); j++) {
+                if (this->cluster_inputs[i][j] != rhs.cluster_inputs[i][j]) return false;
             }
         }
         for (size_t i = 0; i < this->cluster_outputs.size(); i++) {
@@ -76,7 +87,6 @@ struct PackSignatureExternalIO {
 //       Is that desirable?
 struct PackSignaturePrimitive {
     const t_pb_graph_node* pb_graph_node;
-    size_t num_incoming_sources; // TODO this needs to be on a pin-by-pin basis
     std::vector<PackSignatureConnection> intracluster_sources_to_primitive_inputs;
     std::vector<PackSignatureConnection> intracluster_sinks_of_primitive_outputs;
     AtomBlockId atom_block_id; // not part of signature, but referenced when backtracking
@@ -85,14 +95,12 @@ struct PackSignaturePrimitive {
 
     PackSignaturePrimitive(PackSignaturePrimitive& other) {
         this->pb_graph_node = other.pb_graph_node;
-        this->num_incoming_sources = other.num_incoming_sources;
         this->intracluster_sources_to_primitive_inputs = other.intracluster_sources_to_primitive_inputs;
         this->intracluster_sinks_of_primitive_outputs = other.intracluster_sinks_of_primitive_outputs;
     }
 
     bool operator==(PackSignaturePrimitive const& rhs) const {
         if (this->pb_graph_node != rhs.pb_graph_node) return false;
-        if (this->num_incoming_sources != rhs.num_incoming_sources) return false;
         if (this->intracluster_sources_to_primitive_inputs.size() != rhs.intracluster_sources_to_primitive_inputs.size()) return false;
         if (this->intracluster_sinks_of_primitive_outputs.size() != rhs.intracluster_sinks_of_primitive_outputs.size()) return false;
         for (size_t i = 0; i < this->intracluster_sources_to_primitive_inputs.size(); i++) {

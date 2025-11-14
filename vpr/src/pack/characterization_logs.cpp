@@ -75,9 +75,6 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
     const AtomNetlist& atom_netlist = g_vpr_ctx.atom().netlist();
     AtomNetlist::pin_range primitive_input_pins = atom_netlist.block_input_pins(atom_block_id);
 
-    // TODO # input pins for each (non-equivalent) port pin
-    primitive->num_incoming_sources = primitive_input_pins.size();
-
     for (AtomPinId primitive_input_pin_id : primitive_input_pins) {
         AtomNetId primitive_input_pin_net_id = atom_netlist.pin_net(primitive_input_pin_id);
         AtomPortId primitive_input_pin_port_id = atom_netlist.pin_port(primitive_input_pin_id);
@@ -85,11 +82,12 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
         VTR_ASSERT(source_atom_block_id != AtomBlockId::INVALID());
 
         // Create record of groupings of primitive pins driven by the same net.
-        // This is used by the final path node to identify pins which are driven by the same external net.
+        // This is used by the final path node to identify pins which are driven by an external net.
         PackSignatureConnection input_connection = {
             primitive_pb_graph_node,
+            "", 0, // source assumed to be external
             atom_netlist.port_name(primitive_input_pin_port_id),
-            atom_netlist.pin_port_bit(primitive_input_pin_id) // TODO can I work from the data I have to determine if the port pins are equivalent?
+            atom_netlist.pin_port_bit(primitive_input_pin_id)
         };
         input_nets_[primitive_input_pin_net_id].push_back(input_connection);
 
@@ -103,7 +101,9 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
                 PackSignatureConnection source_connection = {
                     probe->primitive->pb_graph_node,
                     atom_netlist.port_name(source_port_id),
-                    atom_netlist.pin_port_bit(source_pin_id)
+                    atom_netlist.pin_port_bit(source_pin_id),
+                    atom_netlist.port_name(primitive_input_pin_port_id),
+                    atom_netlist.pin_port_bit(primitive_input_pin_id)
                 };
                 primitive->intracluster_sources_to_primitive_inputs.push_back(source_connection);
                 memory_usage_scratch += sizeof(PackSignatureConnection);
@@ -130,7 +130,8 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
         PackSignatureConnection primitive_output_connection = {
             primitive_pb_graph_node,
             atom_netlist.port_name(primitive_output_port_id),
-            atom_netlist.pin_port_bit(primitive_output_pin_id)
+            atom_netlist.pin_port_bit(primitive_output_pin_id),
+            "", 0 // sink assumed to be external
         };
 
         ExternalOutputRecord record = {
@@ -155,11 +156,15 @@ PackSignaturePrimitive* PackSignatureTree::generate_primitive(const t_pb_graph_n
             if (source_atom_block_id == atom_block_id) {
                 AtomPinId primitive_output_pin_id = atom_netlist.net_driver(potential_sink_net_id);
                 AtomPortId primitive_output_port_id = atom_netlist.pin_port(primitive_output_pin_id);
+                AtomPinId sink_pin_id = potential_sink_pin_id;
+                AtomPortId sink_port_id = atom_netlist.pin_port(sink_pin_id);
 
                 PackSignatureConnection sink_connection = {
                     probe->primitive->pb_graph_node,
                     atom_netlist.port_name(primitive_output_port_id),
-                    atom_netlist.pin_port_bit(primitive_output_pin_id)
+                    atom_netlist.pin_port_bit(primitive_output_pin_id),
+                    atom_netlist.port_name(sink_port_id),
+                    atom_netlist.pin_port_bit(sink_pin_id)
                 };
                 primitive->intracluster_sinks_of_primitive_outputs.push_back(sink_connection);
                 memory_usage_scratch += sizeof(PackSignatureConnection);
@@ -182,12 +187,11 @@ void PackSignatureTree::finalize_path(LegalizationClusterId legalization_cluster
 
     for (auto it = input_nets_.begin(); it != input_nets_.end(); it++) {
         if (output_nets_.count(it->first) != 0) continue; // net is driven from inside cluster; not an external source
-        if (it->second.size() < 2) continue; // net only drives one pin; inclusion not necessary
         std::sort(it->second.begin(), it->second.end());
-        external_io->shared_cluster_inputs.push_back(it->second);
+        external_io->cluster_inputs.push_back(it->second);
         memory_used += sizeof(std::vector<PackSignatureConnection>) + it->second.size() * sizeof(PackSignatureConnection);
     }
-    std::sort(external_io->shared_cluster_inputs.begin(), external_io->shared_cluster_inputs.end(), [](auto a, auto b) {
+    std::sort(external_io->cluster_inputs.begin(), external_io->cluster_inputs.end(), [](auto a, auto b) {
         if (a.size() != b.size()) return a.size() < b.size();
         for (size_t i = 0; i < a.size(); i++) if (a[i] != b[i]) return a[i] < b[i];
         return false;
@@ -214,16 +218,19 @@ void PackSignatureTree::finalize_path(LegalizationClusterId legalization_cluster
     total_memory_used += memory_used;
 }
 
+// ================================================================
+// START CHARACTERIZATION ONLY CODE
+// ================================================================
+
 void PackSignatureTree::fail_path(LegalizationClusterId legalization_cluster_id) {
     PackSignatureExternalIO* external_io = new PackSignatureExternalIO;
 
     for (auto it = input_nets_.begin(); it != input_nets_.end(); it++) {
         if (output_nets_.count(it->first) != 0) continue; // net is driven from inside cluster; not an external source
-        if (it->second.size() < 2) continue; // net only drives one pin; inclusion not necessary
         std::sort(it->second.begin(), it->second.end());
-        external_io->shared_cluster_inputs.push_back(it->second);
+        external_io->cluster_inputs.push_back(it->second);
     }
-    std::sort(external_io->shared_cluster_inputs.begin(), external_io->shared_cluster_inputs.end(), [](auto a, auto b) {
+    std::sort(external_io->cluster_inputs.begin(), external_io->cluster_inputs.end(), [](auto a, auto b) {
         if (a.size() != b.size()) return a.size() < b.size();
         for (size_t i = 0; i < a.size(); i++) if (a[i] != b[i]) return a[i] < b[i];
         return false;
@@ -247,10 +254,6 @@ void PackSignatureTree::fail_path(LegalizationClusterId legalization_cluster_id)
     external_io->failed_legalization_cluster_detailedness.push_back(this->detailed_legalization);
     at_node_->leaf_nodes.push_back(external_io);
 }
-
-// ================================================================
-// START CHARACTERIZATION ONLY CODE
-// ================================================================
 
 size_t total_finalized_clusters = 0;
 
@@ -279,10 +282,9 @@ static void recurse_placement_dependent(
         }
         intracluster_sinks_of_primitive_outputs_string += " }";
 
-        g_logfile << std::format("<\"{}\", {:#08x}>: {{ num_incoming_sources: {}, drivers: {}, driven: {}, visits: {} }}",
+        g_logfile << std::format("<\"{}\", {:#08x}>: {{ drivers: {}, driven: {}, visits: {} }}",
                                  node->primitive->pb_graph_node->pb_type->name,
                                  reinterpret_cast<uintptr_t>(node->primitive->pb_graph_node),
-                                 node->primitive->num_incoming_sources,
                                  intracluster_sources_to_primitive_inputs_string,
                                  intracluster_sinks_of_primitive_outputs_string,
                                  node->visits);
@@ -292,21 +294,21 @@ static void recurse_placement_dependent(
     for (auto leaf_node : node->leaf_nodes) {
         for (size_t i = 0; i < depth + 1; i++) g_logfile << "| ";
 
-        std::string shared_cluster_inputs_string = "{ ";
-        for (size_t i = 0; i < leaf_node->shared_cluster_inputs.size(); i++) {
-            shared_cluster_inputs_string += "{ ";
-            for (size_t j = 0; j < leaf_node->shared_cluster_inputs[i].size(); j++) {
-                shared_cluster_inputs_string += leaf_node->shared_cluster_inputs[i][j].to_string();
-                if (j < leaf_node->shared_cluster_inputs[i].size() - 1) {
-                    shared_cluster_inputs_string += ", ";
+        std::string cluster_inputs_string = "{ ";
+        for (size_t i = 0; i < leaf_node->cluster_inputs.size(); i++) {
+            cluster_inputs_string += "{ ";
+            for (size_t j = 0; j < leaf_node->cluster_inputs[i].size(); j++) {
+                cluster_inputs_string += leaf_node->cluster_inputs[i][j].to_string();
+                if (j < leaf_node->cluster_inputs[i].size() - 1) {
+                    cluster_inputs_string += ", ";
                 }
             }
-            shared_cluster_inputs_string += " }";
-            if (i < leaf_node->shared_cluster_inputs.size() - 1) {
-                shared_cluster_inputs_string += ", ";
+            cluster_inputs_string += " }";
+            if (i < leaf_node->cluster_inputs.size() - 1) {
+                cluster_inputs_string += ", ";
             }
         }
-        shared_cluster_inputs_string += " }";
+        cluster_inputs_string += " }";
 
         std::string cluster_outputs_string = "{ ";
         for (size_t i = 0; i < leaf_node->cluster_outputs.size(); i++) {
@@ -317,31 +319,35 @@ static void recurse_placement_dependent(
         }
         cluster_outputs_string += " }";
 
-        g_logfile << std::format("IO: {{ shared_cluster_inputs: {}, cluster_outputs: {} }}",
-                                 shared_cluster_inputs_string,
+        g_logfile << std::format("IO: {{ cluster_inputs: {}, cluster_outputs: {} }}",
+                                 cluster_inputs_string,
                                  cluster_outputs_string);
 
         if (leaf_node->successful_legalization_cluster_ids.size() > 0) {
-            VTR_ASSERT(leaf_node->failed_legalization_cluster_ids.size() == 0);
             g_logfile << " [" << leaf_node->successful_legalization_cluster_ids.size() << " CLUSTERS]: { ";
             for (size_t i = 0; i < leaf_node->successful_legalization_cluster_ids.size(); i++) {
                 g_logfile << leaf_node->successful_legalization_cluster_ids[i];
                 g_logfile << (leaf_node->successful_legalization_cluster_detailedness[i] ? "! " : " ");
             }
+            g_logfile << "}";
         }
 
         if (leaf_node->failed_legalization_cluster_ids.size() > 0) {
-            VTR_ASSERT(leaf_node->successful_legalization_cluster_ids.size() == 0);
             g_logfile << " [" << leaf_node->failed_legalization_cluster_ids.size() << " FAILED]: { ";
             for (size_t i = 0; i < leaf_node->failed_legalization_cluster_ids.size(); i++) {
                 g_logfile << leaf_node->failed_legalization_cluster_ids[i];
                 g_logfile << (leaf_node->failed_legalization_cluster_detailedness[i] ? "! " : " ");
             }
+            g_logfile << "}";
         }
 
-        g_logfile << "}";
         total_finalized_clusters += leaf_node->successful_legalization_cluster_ids.size();
         g_logfile << std::endl;
+
+        VTR_ASSERT(
+            (leaf_node->failed_legalization_cluster_ids.size() > 0 && leaf_node->successful_legalization_cluster_ids.size() == 0) ||
+            (leaf_node->successful_legalization_cluster_ids.size() > 0 && leaf_node->failed_legalization_cluster_ids.size() == 0)
+        );
     }
 
 
@@ -355,8 +361,7 @@ static void recurse_placement_dependent(
 
 void PackSignatureTree::log_equivalent() {
     for (size_t i = 0; i < cluster_logical_block_types_.size(); i++) {
-        if (cluster_logical_block_types_[i]->name != "clb") continue;
-        g_logfile << std::format("cluster_pb_type: <{:#08x}, {}>", reinterpret_cast<uintptr_t>(cluster_logical_block_types_[i]), cluster_logical_block_types_[i]->name);
+        g_logfile << std::format("cluster_pb_type: <{:#08x}, {}>", reinterpret_cast<uintptr_t>(cluster_logical_block_types_[i]), cluster_logical_block_types_[i]->name) << std::endl;
         recurse_placement_dependent(signatures_[i], 0);
         g_logfile << "TOTAL FINALIZED CLUSTERS: " << total_finalized_clusters << std::endl << std::endl;
     }
