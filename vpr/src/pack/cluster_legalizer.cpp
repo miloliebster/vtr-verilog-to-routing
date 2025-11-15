@@ -1289,7 +1289,7 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
             t_mode_selection_status mode_status;
             bool is_routed = false;
             bool do_detailed_routing_stage = (cluster_legalization_strategy_ == ClusterLegalizationStrategy::FULL);
-            std::chrono::duration<double> legalization_duration;
+            std::chrono::duration<double> legalization_duration{};
             if (do_detailed_routing_stage) {
                 auto start_time = std::chrono::high_resolution_clock::now(); // XXX
                 do {
