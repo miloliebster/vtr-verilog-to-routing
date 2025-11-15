@@ -228,8 +228,6 @@ GreedyClusterer::do_clustering(ClusterLegalizer& cluster_legalizer,
     return num_used_type_instances;
 }
 
-bool g_print_this_route = false;
-
 LegalizationClusterId GreedyClusterer::try_grow_cluster(PackMoleculeId seed_mol_id,
                                                         GreedyCandidateSelector& candidate_selector,
                                                         ClusterLegalizationStrategy strategy,
@@ -253,8 +251,6 @@ LegalizationClusterId GreedyClusterer::try_grow_cluster(PackMoleculeId seed_mol_
                                                                       balance_block_type_utilization,
                                                                       num_used_type_instances,
                                                                       mutable_device_ctx);
-
-    g_print_this_route = (size_t(legalization_cluster_id) == 3984);
 
     // Create the cluster gain stats. This updates the gains in the candidate
     // selector due to a new molecule being clustered.
@@ -326,9 +322,8 @@ LegalizationClusterId GreedyClusterer::try_grow_cluster(PackMoleculeId seed_mol_
             num_repeated_molecules++;
     }
 
-    // Ensure that the cluster is legal. When the cluster legalization
-    // strategy is full, it must be legal.
-    if (strategy != ClusterLegalizationStrategy::FULL) {
+    // Ensure that the cluster has been routed.
+    if (!g_pack_signatures.routed) {
         // If the legalizer did not check everything for every molecule,
         // need to check that the full cluster is legal (need to perform
         // intra-lb routing).
@@ -344,11 +339,19 @@ LegalizationClusterId GreedyClusterer::try_grow_cluster(PackMoleculeId seed_mol_
             cluster_legalizer.destroy_cluster(legalization_cluster_id);
             cluster_legalizer.compress();
             // Cluster failed to grow.
-            g_pack_signatures.speculative_legalization_failure_duration += end_time - start_time;
+            if (strategy != ClusterLegalizationStrategy::FULL) {
+                g_pack_signatures.speculative_legalization_failure_duration += end_time - start_time;
+            } else {
+                g_pack_signatures.detailed_legalization_failure_duration += end_time - start_time;
+            }
             g_pack_signatures.fail_path(legalization_cluster_id);
             return LegalizationClusterId();
         }
-        g_pack_signatures.speculative_legalization_success_duration += end_time - start_time;
+        if (strategy != ClusterLegalizationStrategy::FULL) {
+            g_pack_signatures.speculative_legalization_success_duration += end_time - start_time;
+        } else {
+            g_pack_signatures.detailed_legalization_success_duration += end_time - start_time;
+        }
     }
 
     // A legal cluster must have been created by this point.

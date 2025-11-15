@@ -59,6 +59,8 @@ struct PackSignatureExternalIO {
     std::vector<std::vector<PackSignatureConnection>> cluster_inputs;
     std::vector<PackSignatureConnection> cluster_outputs;
 
+    bool legal;
+
     // identify the legalization cluster IDs that terminate at this node
     // XXX is this required for anything besides stats?
     std::vector<LegalizationClusterId> successful_legalization_cluster_ids;
@@ -132,6 +134,11 @@ struct PackSignatureTreeNode {
     }
 };
 
+enum e_pack_signature_legality {
+    UNKNOWN,
+    LEGAL,
+    ILLEGAL
+};
 
 class PackSignatureTree {
 public:
@@ -140,9 +147,12 @@ public:
     std::chrono::duration<double> speculative_legalization_failure_duration;
     std::chrono::duration<double> detailed_legalization_success_duration;
     std::chrono::duration<double> detailed_legalization_failure_duration;
+    std::chrono::duration<double> signature_processing_duration;
 
     size_t memory_usage_scratch = 0;
     size_t total_memory_used = 0;
+
+    bool routed;
 
     PackSignatureTree() {}
 
@@ -152,7 +162,12 @@ public:
 
     void start_pack_signature(const t_logical_block_type* cluster_logical_block_type);
     void add_primitive(const t_pb_graph_node* primitive_pb_graph_node, const AtomBlockId atom_block_id);
+    void set_checkpoint();
+    void rollback_to_checkpoint();
 
+    e_pack_signature_legality check_signature_legality();
+    void mark_signature_as_legal(LegalizationClusterId legalization_cluster_id = LegalizationClusterId::INVALID());
+    void mark_signature_as_illegal(LegalizationClusterId legalization_cluster_id = LegalizationClusterId::INVALID());
     void finalize_path(LegalizationClusterId legalization_cluster_id);
     void fail_path(LegalizationClusterId legalization_cluster_id);
 
@@ -160,6 +175,7 @@ public:
 
 private:
     PackSignaturePrimitive* generate_primitive(const t_pb_graph_node* primitive_pb_graph_node, const AtomBlockId atom_block_id);
+    PackSignatureExternalIO* get_external_io_state();
 
     // signatures_[i] corresponds to the logical_block_type pointed to by cluster_logical_block_types_[i].
     std::vector<const t_logical_block_type*> cluster_logical_block_types_;
@@ -167,6 +183,10 @@ private:
 
     // Current node for signature being constructed
     PackSignatureTreeNode* at_node_;
+    PackSignatureTreeNode* checkpoint_node_;
+    std::map<AtomNetId, size_t> checkpoint_input_nets_;
+    std::map<AtomNetId, size_t> checkpoint_decremented_output_nets_;
+    std::vector<AtomNetId> checkpoint_new_output_nets_;
 
     // External IO bookkeeping
     struct ExternalOutputRecord {
