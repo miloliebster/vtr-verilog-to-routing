@@ -413,8 +413,6 @@ static bool try_expand_nodes(t_lb_router_data* router_data,
     return is_impossible;
 }
 
-extern bool g_print_this_route;
-
 /* Attempt to route routing driver/targets on the current architecture
  * Follows pathfinder negotiated congestion algorithm
  */
@@ -531,7 +529,7 @@ bool try_intra_lb_route(t_lb_router_data* router_data,
         router_data->pres_con_fac *= router_data->params.pres_fac_mult;
     }
 
-    if (g_print_this_route) {
+    if (false) {
         if (is_routed) print_route("successful_route.txt", router_data);
         else print_route("failed_route.txt", router_data);
     }
