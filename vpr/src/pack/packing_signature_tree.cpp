@@ -7,7 +7,7 @@
 #include "cluster_legalizer.h"
 
 #include <chrono>
-#include "characterization_logs.h"
+#include "packing_signature_tree.h"
 
 PackSignatureTree g_pack_signatures; // TODO this should not be a global in the end. Part of ClusterLegalizer?
 

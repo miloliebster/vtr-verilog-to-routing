@@ -39,7 +39,7 @@
 #include "vtr_vector_map.h"
 
 #include <chrono>
-#include "characterization_logs.h"
+#include "packing_signature_tree.h"
 
 /*
  * @brief Allocates the stats stored within the pb of a cluster.

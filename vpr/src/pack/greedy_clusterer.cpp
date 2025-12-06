@@ -56,7 +56,7 @@
 #include "vtr_math.h"
 
 #include <chrono>
-#include "characterization_logs.h"
+#include "packing_signature_tree.h"
 
 namespace {
 
