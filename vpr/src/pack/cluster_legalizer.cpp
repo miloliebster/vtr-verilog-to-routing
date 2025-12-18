@@ -1256,7 +1256,7 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
             }
         }
 
-        g_pack_signatures.set_checkpoint();
+        g_packing_signatures.set_checkpoint();
         if (block_pack_status == e_block_pack_status::BLK_PASSED) {
             /*
              * during the clustering step of `do_clustering`, `detailed_routing_stage` is incremented at each iteration until it a cluster
@@ -1291,46 +1291,46 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
             for (size_t i = 0; i < molecule.atom_block_ids.size(); i++) {
                 AtomBlockId atom_block_id = molecule.atom_block_ids[i];
                 if (atom_block_id) {
-                    g_pack_signatures.add_primitive(primitives_list[i], atom_block_id);
+                    g_packing_signatures.add_psn(primitives_list[i], atom_block_id);
                 }
             }
 
-            g_pack_signatures.routed = false;
+            g_packing_signatures.routed = false;
 
             t_mode_selection_status mode_status;
-            e_pack_signature_legality pack_signature_legality = e_pack_signature_legality::UNKNOWN;
+            e_packing_signature_legality packing_signature_legality = e_packing_signature_legality::UNKNOWN;
             bool do_detailed_routing_stage = (cluster_legalization_strategy_ == ClusterLegalizationStrategy::FULL);
             std::chrono::duration<double> legalization_duration{};
             if (do_detailed_routing_stage) {
                 auto start_time = std::chrono::high_resolution_clock::now(); // XXX
-                pack_signature_legality = g_pack_signatures.check_signature_legality();
-                if (pack_signature_legality == e_pack_signature_legality::UNKNOWN) {
+                packing_signature_legality = g_packing_signatures.check_legality();
+                if (packing_signature_legality == e_packing_signature_legality::UNKNOWN) {
                     do {
                         reset_intra_lb_route(cluster.router_data);
-                        g_pack_signatures.routed = try_intra_lb_route(cluster.router_data, log_verbosity_, &mode_status);
+                        g_packing_signatures.routed = try_intra_lb_route(cluster.router_data, log_verbosity_, &mode_status);
                     } while (mode_status.is_mode_issue());
-                    if (g_pack_signatures.routed) {
-                        pack_signature_legality = e_pack_signature_legality::LEGAL;
-                        g_pack_signatures.mark_signature_as_legal();
+                    if (g_packing_signatures.routed) {
+                        packing_signature_legality = e_packing_signature_legality::LEGAL;
+                        g_packing_signatures.mark_signature_as_legal();
                     } else {
-                        pack_signature_legality = e_pack_signature_legality::ILLEGAL;
-                        g_pack_signatures.mark_signature_as_illegal();
+                        packing_signature_legality = e_packing_signature_legality::ILLEGAL;
+                        g_packing_signatures.mark_signature_as_illegal();
                     }
                 }
                 auto end_time = std::chrono::high_resolution_clock::now(); // XXX
                 legalization_duration = end_time - start_time; // XXX
             }
 
-            if (do_detailed_routing_stage && pack_signature_legality == e_pack_signature_legality::ILLEGAL) {
+            if (do_detailed_routing_stage && packing_signature_legality == e_packing_signature_legality::ILLEGAL) {
                 /* Cannot pack */
-                g_pack_signatures.detailed_legalization_failure_duration += legalization_duration; // XXX
+                g_packing_signatures.detailed_legalization_failure_duration += legalization_duration; // XXX
                 VTR_LOGV(log_verbosity_ > 4, "\t\t\tFAILED Detailed Routing Legality\n");
                 block_pack_status = e_block_pack_status::BLK_FAILED_ROUTE;
             } else {
                 /* Pack successful, commit
                  * TODO: SW Engineering note - may want to update cluster stats here too instead of doing it outside
                  */
-                g_pack_signatures.detailed_legalization_success_duration += legalization_duration; // XXX
+                g_packing_signatures.detailed_legalization_success_duration += legalization_duration; // XXX
                 VTR_ASSERT(block_pack_status == e_block_pack_status::BLK_PASSED);
                 if (molecule.is_chain()) {
                     /* Chained molecules often take up lots of area and are important,
@@ -1396,7 +1396,7 @@ e_block_pack_status ClusterLegalizer::try_pack_molecule(PackMoleculeId molecule_
         }
 
         if (block_pack_status != e_block_pack_status::BLK_PASSED) {
-            g_pack_signatures.rollback_to_checkpoint();
+            g_packing_signatures.rollback_to_checkpoint();
             for (size_t i = 0; i < failed_location; i++) {
                 AtomBlockId atom_blk_id = molecule.atom_block_ids[i];
                 if (atom_blk_id) {
