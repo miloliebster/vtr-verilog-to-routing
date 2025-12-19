@@ -17,9 +17,8 @@
 #include "globals.h"
 #include "cluster_legalizer.h"
 
-void try_open_logfile();
-
-extern std::ofstream g_logfile;
+// Define to resolve circular dependancy with cluster_legalizer.h
+typedef vtr::StrongId<struct legalization_cluster_id_tag, size_t> LegalizationClusterId;
 
 typedef std::tuple<int, std::string, BitIndex> PstPin;
 
@@ -29,7 +28,6 @@ struct PstPinHash {
     }
 };
 
-struct pst_pin_id_tag {};
 typedef vtr::StrongId<struct pst_pin_id_tag> PstPinId;
 
 struct PstConnection {
@@ -100,12 +98,12 @@ enum e_packing_signature_legality {
 
 class PackingSignatureTree {
 public:
-    bool detailed_legalization = false;
-    std::chrono::duration<double> speculative_legalization_success_duration;
-    std::chrono::duration<double> speculative_legalization_failure_duration;
-    std::chrono::duration<double> detailed_legalization_success_duration;
-    std::chrono::duration<double> detailed_legalization_failure_duration;
-    std::chrono::duration<double> signature_processing_duration;
+    bool detailed_legalization = false; // XXX
+    std::chrono::duration<double> speculative_legalization_success_duration; // XXX
+    std::chrono::duration<double> speculative_legalization_failure_duration; // XXX
+    std::chrono::duration<double> detailed_legalization_success_duration; // XXX
+    std::chrono::duration<double> detailed_legalization_failure_duration; // XXX
+    std::chrono::duration<double> signature_processing_duration; // XXX
 
     bool routed = false;
 
@@ -171,5 +169,3 @@ private:
     std::vector<AtomBlockId> checkpoint_new_atoms_;
 
 };
-
-extern PackingSignatureTree g_packing_signatures; // XXX this should not be a global in the end. Part of ClusterLegalizer?

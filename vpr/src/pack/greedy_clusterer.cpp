@@ -170,7 +170,7 @@ GreedyClusterer::do_clustering(ClusterLegalizer& cluster_legalizer,
         // Try to grow a cluster from the seed molecule without doing intra-lb
         // route for each molecule (i.e. just use faster but not fully
         // conservative legality checks).
-        g_packing_signatures.detailed_legalization = false;
+        cluster_legalizer.packing_signature_tree.detailed_legalization = false; // XXX
         LegalizationClusterId new_cluster_id = try_grow_cluster(seed_mol_id,
                                                                 candidate_selector,
                                                                 ClusterLegalizationStrategy::SKIP_INTRA_LB_ROUTE,
@@ -185,7 +185,7 @@ GreedyClusterer::do_clustering(ClusterLegalizer& cluster_legalizer,
             // If the previous strategy failed, try to grow the cluster again,
             // but this time perform full legalization for each molecule added
             // to the cluster.
-            g_packing_signatures.detailed_legalization = true;
+            cluster_legalizer.packing_signature_tree.detailed_legalization = true; // XXX
             new_cluster_id = try_grow_cluster(seed_mol_id,
                                               candidate_selector,
                                               ClusterLegalizationStrategy::FULL,
@@ -223,7 +223,7 @@ GreedyClusterer::do_clustering(ClusterLegalizer& cluster_legalizer,
     // If this architecture has LE physical block, report its usage.
     report_le_physical_block_usage(cluster_legalizer);
 
-    g_packing_signatures.log_equivalent();
+    cluster_legalizer.packing_signature_tree.log_equivalent(); // XXX
 
     return num_used_type_instances;
 }
@@ -322,19 +322,18 @@ LegalizationClusterId GreedyClusterer::try_grow_cluster(PackMoleculeId seed_mol_
             num_repeated_molecules++;
     }
 
-    // Ensure that the cluster has been routed.
-    if (!g_packing_signatures.routed) {
+    // Ensure that the cluster has a final routing.
+    if (!cluster_legalizer.packing_signature_tree.routed) {
         // If the legalizer did not check everything for every molecule,
         // need to check that the full cluster is legal (need to perform intra-lb routing).
         auto start_time = std::chrono::high_resolution_clock::now(); // XXX
-        e_packing_signature_legality packing_signature_legality = g_packing_signatures.check_legality();
-        if (packing_signature_legality != e_packing_signature_legality::ILLEGAL) {
-            bool legal = cluster_legalizer.check_cluster_legality(legalization_cluster_id);
-            packing_signature_legality = (legal) ? e_packing_signature_legality::LEGAL : e_packing_signature_legality::ILLEGAL;
+        e_packing_signature_legality legality = cluster_legalizer.packing_signature_tree.check_legality();
+        if (legality != e_packing_signature_legality::ILLEGAL) {
+            legality = cluster_legalizer.check_cluster_legality(legalization_cluster_id) ? e_packing_signature_legality::LEGAL : e_packing_signature_legality::ILLEGAL;
         }
         auto end_time = std::chrono::high_resolution_clock::now(); // XXX
 
-        if (packing_signature_legality == e_packing_signature_legality::ILLEGAL) {
+        if (legality == e_packing_signature_legality::ILLEGAL) {
             // If the cluster is not legal, undo the cluster.
             // Update the used type instances.
             num_used_type_instances[cluster_legalizer.get_cluster_type(legalization_cluster_id)]--;
@@ -342,18 +341,18 @@ LegalizationClusterId GreedyClusterer::try_grow_cluster(PackMoleculeId seed_mol_
             cluster_legalizer.destroy_cluster(legalization_cluster_id);
             cluster_legalizer.compress();
             // Cluster failed to grow.
-            if (strategy != ClusterLegalizationStrategy::FULL) {
-                g_packing_signatures.speculative_legalization_failure_duration += end_time - start_time;
-            } else {
-                g_packing_signatures.detailed_legalization_failure_duration += end_time - start_time;
-            }
-            g_packing_signatures.fail_path(legalization_cluster_id);
+            if (strategy != ClusterLegalizationStrategy::FULL) { // XXX
+                cluster_legalizer.packing_signature_tree.speculative_legalization_failure_duration += end_time - start_time; // XXX
+            } else { // XXX
+                cluster_legalizer.packing_signature_tree.detailed_legalization_failure_duration += end_time - start_time; // XXX
+            } // XXX
+            cluster_legalizer.packing_signature_tree.fail_path(legalization_cluster_id); // XXX
             return LegalizationClusterId();
         }
         if (strategy != ClusterLegalizationStrategy::FULL) {
-            g_packing_signatures.speculative_legalization_success_duration += end_time - start_time;
+            cluster_legalizer.packing_signature_tree.speculative_legalization_success_duration += end_time - start_time;
         } else {
-            g_packing_signatures.detailed_legalization_success_duration += end_time - start_time;
+            cluster_legalizer.packing_signature_tree.detailed_legalization_success_duration += end_time - start_time;
         }
     }
 
@@ -370,7 +369,7 @@ LegalizationClusterId GreedyClusterer::try_grow_cluster(PackMoleculeId seed_mol_
     // creating the clustered netlist.
     cluster_legalizer.clean_cluster(legalization_cluster_id);
 
-    g_packing_signatures.finalize_path(legalization_cluster_id);
+    cluster_legalizer.packing_signature_tree.finalize_path(legalization_cluster_id);
 
     // Cluster has been grown successfully.
     return legalization_cluster_id;
@@ -424,8 +423,6 @@ LegalizationClusterId GreedyClusterer::start_new_cluster(
         VTR_LOG("\n");
     }
 
-    try_open_logfile();
-
     //Try packing into each candidate type
     bool success = false;
     t_logical_block_type_ptr block_type;
@@ -434,7 +431,7 @@ LegalizationClusterId GreedyClusterer::start_new_cluster(
         //Try packing into each mode
         e_block_pack_status pack_result = e_block_pack_status::BLK_STATUS_UNDEFINED;
         for (int j = 0; j < type->pb_graph_head->pb_type->num_modes && !success; j++) {
-            g_packing_signatures.start_packing_signature(type);
+            cluster_legalizer.packing_signature_tree.start_packing_signature(type);
             std::tie(pack_result, new_cluster_id) = cluster_legalizer.start_new_cluster(seed_mol_id, type, j);
             success = (pack_result == e_block_pack_status::BLK_PASSED);
         }

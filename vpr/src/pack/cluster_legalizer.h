@@ -24,6 +24,7 @@
 #include "vtr_vector_map.h"
 #include "atom_pb_bimap.h"
 #include "vpr_utils.h"
+#include "packing_signature_tree.h"
 
 // Forward declarations
 class Prepacker;
@@ -199,6 +200,8 @@ class ClusterLegalizer {
 
     // Range for the legalization cluster IDs
     typedef typename vtr::Range<cluster_iterator> cluster_range;
+
+    PackingSignatureTree packing_signature_tree; // XXX this should be a private member
 
   private:
     /*

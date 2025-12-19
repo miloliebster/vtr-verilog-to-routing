@@ -9,10 +9,6 @@
 #include <chrono>
 #include "packing_signature_tree.h"
 
-PackingSignatureTree g_packing_signatures; // TODO this should not be a global in the end. Part of ClusterLegalizer?
-
-size_t started = 0;
-
 void PackingSignatureTree::start_packing_signature(const t_logical_block_type* cluster_logical_block_type) {
     // Reset external IO bookkeeping
     input_nets_.clear();
@@ -23,7 +19,6 @@ void PackingSignatureTree::start_packing_signature(const t_logical_block_type* c
     checkpoint_decremented_output_nets_.clear();
     checkpoint_new_atoms_.clear();
     routed = false;
-    started++;
 
     for (size_t i = 0; i < cluster_logical_block_types_.size(); i++) {
         if (cluster_logical_block_types_[i] != cluster_logical_block_type) continue;
@@ -87,12 +82,11 @@ PrimitiveSignatureNode* PackingSignatureTree::create_psn(const t_pb_graph_node* 
                                                           atom_netlist.port_name(primitive_output_port_id),
                                                           atom_netlist.pin_port_bit(primitive_output_pin_id));
 
-        EcnRecord record = {
+        output_nets_[primitive_output_net_id] = EcnRecord(
             this->get_pin_mapping(primitive_output_psn_pin),
             atom_netlist.net_sinks(primitive_output_net_id).size()
-        };
+        );
 
-        output_nets_[primitive_output_net_id] = record;
         checkpoint_new_output_nets_.push_back(primitive_output_net_id);
     }
 
@@ -216,7 +210,6 @@ void PackingSignatureTree::rollback_to_checkpoint() {
     signature_processing_duration += end_time - start_time; // XXX
 }
 
-
 ExternalConnectivityNode* PackingSignatureTree::create_ecn() {
     ExternalConnectivityNode* new_ecn = new ExternalConnectivityNode;
 
@@ -263,18 +256,18 @@ void PackingSignatureTree::mark_signature_as_legal(LegalizationClusterId legaliz
     for (ssize_t i = at_psn_->child_ecn.size() - 1; i >= 0 ; i--) {
         ExternalConnectivityNode* child_ecn = at_psn_->child_ecn[i];
         if (*child_ecn == *ecn) {
-            if (legalization_cluster_id != LegalizationClusterId::INVALID()) {
-                child_ecn->successful_clusters++;
-                if (this->detailed_legalization) child_ecn->successful_detailed_clusters++;
-            }
+            if (legalization_cluster_id != LegalizationClusterId::INVALID()) { // XXX
+                child_ecn->successful_clusters++; // XXX
+                if (this->detailed_legalization) child_ecn->successful_detailed_clusters++; // XXX
+            } // XXX
             delete ecn;
             return;
         }
     }
-    if (legalization_cluster_id != LegalizationClusterId::INVALID()) {
-        ecn->successful_clusters++;
-        if (this->detailed_legalization) ecn->successful_detailed_clusters++;
-    }
+    if (legalization_cluster_id != LegalizationClusterId::INVALID()) { // XXX
+        ecn->successful_clusters++; // XXX
+        if (this->detailed_legalization) ecn->successful_detailed_clusters++; // XXX
+    } // XXX
     at_psn_->child_ecn.push_back(ecn);
 
     auto end_time = std::chrono::high_resolution_clock::now(); // XXX
@@ -290,18 +283,18 @@ void PackingSignatureTree::mark_signature_as_illegal(LegalizationClusterId legal
     for (ssize_t i = at_psn_->child_ecn.size() - 1; i >= 0 ; i--) {
         ExternalConnectivityNode* child_ecn = at_psn_->child_ecn[i];
         if (*child_ecn == *ecn) {
-            if (legalization_cluster_id != LegalizationClusterId::INVALID()) {
-                child_ecn->successful_clusters++;
-                if (this->detailed_legalization) child_ecn->successful_detailed_clusters++;
-            }
+            if (legalization_cluster_id != LegalizationClusterId::INVALID()) { // XXX
+                child_ecn->failed_clusters++; // XXX
+                if (this->detailed_legalization) child_ecn->failed_detailed_clusters++; // XXX
+            } // XXX
             delete ecn;
             return;
         }
     }
-    if (legalization_cluster_id != LegalizationClusterId::INVALID()) {
-        ecn->successful_clusters++;
-        if (this->detailed_legalization) ecn->successful_detailed_clusters++;
-    }
+    if (legalization_cluster_id != LegalizationClusterId::INVALID()) { // XXX
+        ecn->failed_clusters++; // XXX
+        if (this->detailed_legalization) ecn->failed_detailed_clusters++; // XXX
+    } // XXX
     at_psn_->child_ecn.push_back(ecn);
 
     auto end_time = std::chrono::high_resolution_clock::now(); // XXX
@@ -322,9 +315,9 @@ void PackingSignatureTree::fail_path(LegalizationClusterId legalization_cluster_
 
 size_t total_finalized_clusters = 0;
 
-static void recurse_placement_dependent(const PrimitiveSignatureNode* psn, size_t depth) {
+static void recurse_placement_dependent(const PrimitiveSignatureNode* psn, size_t depth, std::ofstream& logfile) {
     if (psn->primitive_num != -1) {
-        for (size_t i = 0; i < depth; i++) g_logfile << "| ";
+        for (size_t i = 0; i < depth; i++) logfile << "| ";
 
         std::string intracluster_sources_to_primitive_inputs_string = "{ ";
         for (size_t i = 0; i < psn->intracluster_sources_to_primitive_inputs.size(); i++) {
@@ -344,15 +337,15 @@ static void recurse_placement_dependent(const PrimitiveSignatureNode* psn, size_
         }
         intracluster_sinks_of_primitive_outputs_string += " }";
 
-        g_logfile << std::format("loc{}: {{ drivers: {}, driven: {} }}",
+        logfile << std::format("loc{}: {{ drivers: {}, driven: {} }}",
                                  psn->primitive_num,
                                  intracluster_sources_to_primitive_inputs_string,
                                  intracluster_sinks_of_primitive_outputs_string);
-        g_logfile << std::endl;
+        logfile << std::endl;
     }
 
     for (auto ecn : psn->child_ecn) {
-        for (size_t i = 0; i < depth + 1; i++) g_logfile << "| ";
+        for (size_t i = 0; i < depth + 1; i++) logfile << "| ";
 
         std::string cluster_inputs_string = "{ ";
         for (size_t i = 0; i < ecn->cluster_inputs.size(); i++) {
@@ -381,21 +374,21 @@ static void recurse_placement_dependent(const PrimitiveSignatureNode* psn, size_
         }
         cluster_outputs_string += " }";
 
-        g_logfile << std::format("IO: {{ legal: {}, cluster_inputs: {}, cluster_outputs: {} }}",
+        logfile << std::format("IO: {{ legal: {}, cluster_inputs: {}, cluster_outputs: {} }}",
                                  ecn->legal,
                                  cluster_inputs_string,
                                  cluster_outputs_string);
 
         if (ecn->successful_clusters > 0) {
-            g_logfile << " [" << ecn->successful_clusters << " CLUSTERS | " << ecn->successful_detailed_clusters << " DETAILED]";
+            logfile << " [" << ecn->successful_clusters << " CLUSTERS | " << ecn->successful_detailed_clusters << " DETAILED]";
         }
 
         if (ecn->failed_clusters > 0) {
-            g_logfile << " [" << ecn->failed_clusters << " FAILED | " << ecn->failed_detailed_clusters << " DETAILED]";
+            logfile << " [" << ecn->failed_clusters << " FAILED | " << ecn->failed_detailed_clusters << " DETAILED]";
         }
 
         total_finalized_clusters += ecn->successful_clusters;
-        g_logfile << std::endl;
+        logfile << std::endl;
 
         VTR_ASSERT(
             (ecn->failed_clusters    == 0  && ecn->successful_clusters == 0) ||
@@ -405,39 +398,23 @@ static void recurse_placement_dependent(const PrimitiveSignatureNode* psn, size_
     }
 
     for (PrimitiveSignatureNode* child_psn : psn->child_psn) {
-        recurse_placement_dependent(child_psn, depth + 1);
+        recurse_placement_dependent(child_psn, depth + 1, logfile);
     }
 }
 
 void PackingSignatureTree::log_equivalent() {
-    g_logfile << "STARTED: " << started << std::endl;
+    std::ofstream logfile;
+    logfile.open("pst.txt");
     for (size_t i = 0; i < cluster_logical_block_types_.size(); i++) {
-        g_logfile << std::format("cluster_pb_type: <{:#08x}, {}>", reinterpret_cast<uintptr_t>(cluster_logical_block_types_[i]), cluster_logical_block_types_[i]->name) << std::endl;
-        recurse_placement_dependent(packing_signatures_[i], 0);
-        g_logfile << "TOTAL FINALIZED CLUSTERS: " << total_finalized_clusters << std::endl << std::endl;
+        logfile << std::format("cluster_pb_type: <{:#08x}, {}>", reinterpret_cast<uintptr_t>(cluster_logical_block_types_[i]), cluster_logical_block_types_[i]->name) << std::endl;
+        recurse_placement_dependent(packing_signatures_[i], 0, logfile);
+        logfile << "TOTAL FINALIZED CLUSTERS: " << total_finalized_clusters << std::endl << std::endl;
     }
-    g_logfile << "SPECULATIVE LEGALIZATION SUCCESS TIME: " << speculative_legalization_success_duration << std::endl;
-    g_logfile << "SPECULATIVE LEGALIZATION FAILURE TIME: " << speculative_legalization_failure_duration << std::endl;
-    g_logfile << "DETAILED LEGALIZATION SUCCESS TIME: " << detailed_legalization_success_duration << std::endl;
-    g_logfile << "DETAILED LEGALIZATION FAILURE TIME: " << detailed_legalization_failure_duration << std::endl << std::endl;
+    logfile << "SPECULATIVE LEGALIZATION SUCCESS TIME: " << speculative_legalization_success_duration << std::endl;
+    logfile << "SPECULATIVE LEGALIZATION FAILURE TIME: " << speculative_legalization_failure_duration << std::endl;
+    logfile << "DETAILED LEGALIZATION SUCCESS TIME: " << detailed_legalization_success_duration << std::endl;
+    logfile << "DETAILED LEGALIZATION FAILURE TIME: " << detailed_legalization_failure_duration << std::endl << std::endl;
 
-    g_logfile << "SIGNATURE PROCESSING TIME: " << signature_processing_duration << std::endl;
+    logfile << "SIGNATURE PROCESSING TIME: " << signature_processing_duration << std::endl;
+    logfile.close();
 }
-
-std::ofstream g_logfile;
-bool logfile_open = false;
-
-void try_open_logfile() {
-    if (logfile_open) return;
-
-    char date_string[64] = {};
-    time_t t = time(NULL);
-    strftime(date_string, sizeof(date_string), "%F_%H-%M-%S", localtime(&t));
-    std::string logfile_path = "char_";
-    logfile_path += date_string;
-    logfile_path += ".txt";
-    g_logfile.open(logfile_path);
-    std::atexit([](){ g_logfile.close(); });
-    logfile_open = true;
-}
-
