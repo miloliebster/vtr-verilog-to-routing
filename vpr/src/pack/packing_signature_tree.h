@@ -53,20 +53,18 @@ struct ExternalConnectivityNode {
 
     bool legal;
 
-    int successful_clusters;// XXX
-    int successful_detailed_clusters;// XXX
-
-    int failed_clusters;// XXX
-    int failed_detailed_clusters;// XXX
+    unsigned short successful_clusters;// XXX
+    unsigned short successful_detailed_clusters;// XXX
+    unsigned short failed_clusters;// XXX
+    unsigned short detailed_legalization_checks;// XXX
 
     ExternalConnectivityNode()
-        : legal(false), successful_clusters(0), successful_detailed_clusters(0), failed_clusters(0), failed_detailed_clusters(0) {}
+        : legal(false),
+        successful_clusters(0), successful_detailed_clusters(0), failed_clusters(0), detailed_legalization_checks(0) {} // XXX
 
     bool operator==(ExternalConnectivityNode const& rhs) const {
         if (this->cluster_inputs != rhs.cluster_inputs) return false;
-        return (this->cluster_outputs == rhs.cluster_outputs);
-    }
-};
+        return (this->cluster_outputs == rhs.cluster_outputs); } };
 
 struct PrimitiveSignatureNode {
     int primitive_num;
@@ -106,6 +104,8 @@ public:
     std::chrono::duration<double> signature_processing_duration; // XXX
 
     bool routed = false;
+
+    unsigned short legalization_checks = 0; // XXX
 
     PackingSignatureTree() {}
     ~PackingSignatureTree() {

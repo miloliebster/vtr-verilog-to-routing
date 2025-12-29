@@ -18,6 +18,8 @@ void PackingSignatureTree::start_packing_signature(const t_logical_block_type* c
     checkpoint_new_output_nets_.clear();
     checkpoint_decremented_output_nets_.clear();
     checkpoint_new_atoms_.clear();
+    legalization_checks = 0;
+
     routed = false;
 
     for (size_t i = 0; i < cluster_logical_block_types_.size(); i++) {
@@ -231,7 +233,8 @@ ExternalConnectivityNode* PackingSignatureTree::create_ecn() {
 
 e_packing_signature_legality PackingSignatureTree::check_legality() {
     auto start_time = std::chrono::high_resolution_clock::now(); // XXX
-                                                                 //
+    legalization_checks++;
+
     ExternalConnectivityNode* ecn = this->create_ecn();
     for (ssize_t i = at_psn_->child_ecn.size() - 1; i >= 0 ; i--) {
         ExternalConnectivityNode* child_ecn = at_psn_->child_ecn[i];
@@ -252,6 +255,7 @@ void PackingSignatureTree::mark_signature_as_legal(LegalizationClusterId legaliz
                                                                  //
     ExternalConnectivityNode* ecn = this->create_ecn();
     ecn->legal = true;
+    ecn->detailed_legalization_checks = legalization_checks; // XXX
 
     for (ssize_t i = at_psn_->child_ecn.size() - 1; i >= 0 ; i--) {
         ExternalConnectivityNode* child_ecn = at_psn_->child_ecn[i];
@@ -279,13 +283,13 @@ void PackingSignatureTree::mark_signature_as_illegal(LegalizationClusterId legal
                                                                  //
     ExternalConnectivityNode* ecn = this->create_ecn();
     ecn->legal = false;
+    ecn->detailed_legalization_checks = legalization_checks; // XXX
 
     for (ssize_t i = at_psn_->child_ecn.size() - 1; i >= 0 ; i--) {
         ExternalConnectivityNode* child_ecn = at_psn_->child_ecn[i];
         if (*child_ecn == *ecn) {
             if (legalization_cluster_id != LegalizationClusterId::INVALID()) { // XXX
                 child_ecn->failed_clusters++; // XXX
-                if (this->detailed_legalization) child_ecn->failed_detailed_clusters++; // XXX
             } // XXX
             delete ecn;
             return;
@@ -293,7 +297,6 @@ void PackingSignatureTree::mark_signature_as_illegal(LegalizationClusterId legal
     }
     if (legalization_cluster_id != LegalizationClusterId::INVALID()) { // XXX
         ecn->failed_clusters++; // XXX
-        if (this->detailed_legalization) ecn->failed_detailed_clusters++; // XXX
     } // XXX
     at_psn_->child_ecn.push_back(ecn);
 
@@ -380,13 +383,14 @@ static void recurse_placement_dependent(const PrimitiveSignatureNode* psn, size_
                                  cluster_outputs_string);
 
         if (ecn->successful_clusters > 0) {
-            logfile << " [" << ecn->successful_clusters << " CLUSTERS | " << ecn->successful_detailed_clusters << " DETAILED]";
+            logfile << " [" << ecn->successful_clusters << " CLUSTERS ; " << ecn->successful_detailed_clusters << " DETAILED" << " ~ " << ecn->detailed_legalization_checks;
         }
 
         if (ecn->failed_clusters > 0) {
-            logfile << " [" << ecn->failed_clusters << " FAILED | " << ecn->failed_detailed_clusters << " DETAILED]";
+            logfile << " [" << ecn->failed_clusters << " FAILED";
         }
 
+        logfile << "]";
         total_finalized_clusters += ecn->successful_clusters;
         logfile << std::endl;
 
@@ -415,6 +419,10 @@ void PackingSignatureTree::log_equivalent() {
     logfile << "DETAILED LEGALIZATION SUCCESS TIME: " << detailed_legalization_success_duration << std::endl;
     logfile << "DETAILED LEGALIZATION FAILURE TIME: " << detailed_legalization_failure_duration << std::endl << std::endl;
 
-    logfile << "SIGNATURE PROCESSING TIME: " << signature_processing_duration << std::endl;
+    logfile << "SIGNATURE PROCESSING TIME: " << signature_processing_duration << std::endl << std::endl;
+
+    for (auto pin : pin_mappings_) {
+        logfile << "PIN " << pin.second << " (" << std::get<0>(pin.first) << "," << std::get<1>(pin.first) << "," << (int)std::get<2>(pin.first) << ")" << std::endl;
+    }
     logfile.close();
 }
