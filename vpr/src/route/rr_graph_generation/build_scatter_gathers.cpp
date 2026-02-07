@@ -276,7 +276,7 @@ std::vector<t_bottleneck_link> alloc_and_load_scatter_gather_connections(const s
                                   scatter_loc.layer_num, scatter_loc.x, scatter_loc.y,
                                   scatter_wire_candidates.size());
 
-                    continue;
+                    // continue;
                 }
 
                 const bool is_3d_link = (sg_link.z_offset != 0);
@@ -399,8 +399,10 @@ void convert_interposer_cuts_to_sg_patterns(const std::vector<t_layer_def>& inte
 void compute_non_3d_sg_link_geometry(const t_physical_tile_loc& src_loc,
                                      const t_physical_tile_loc& dst_loc,
                                      e_rr_type& chan_type,
-                                     int& xlow, int& xhigh,
-                                     int& ylow, int& yhigh,
+                                     int& xlow,
+                                     int& xhigh,
+                                     int& ylow,
+                                     int& yhigh,
                                      Direction& direction) {
     VTR_ASSERT_SAFE(src_loc.layer_num == dst_loc.layer_num);
 

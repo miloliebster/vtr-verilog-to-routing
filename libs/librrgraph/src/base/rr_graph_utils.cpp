@@ -180,7 +180,7 @@ void rr_set_sink_locs(const RRGraphView& rr_graph, RRGraphBuilder& rr_graph_buil
 
         // See if we have encountered this tile type/ptc combo before, and used saved offset if so
         vtr::Point<int> new_loc(-1, -1);
-        if ((physical_type_offsets.find(tile_type) != physical_type_offsets.end()) && (physical_type_offsets[tile_type].find(node_ptc) != physical_type_offsets[tile_type].end())) {
+        if (physical_type_offsets.contains(tile_type) && physical_type_offsets[tile_type].contains(node_ptc)) {
             new_loc = tile_bb.bottom_left() + physical_type_offsets[tile_type].at(node_ptc);
         } else { /* We have not seen this tile type/ptc combo before */
             // The IPINs of the current SINK node
@@ -197,7 +197,7 @@ void rr_set_sink_locs(const RRGraphView& rr_graph, RRGraphBuilder& rr_graph_buil
             std::vector<float> y_coords;
 
             // Add coordinates of each "cluster-edge" pin to vectors
-            for (const auto& pin : sink_ipins) {
+            for (const RRNodeId pin : sink_ipins) {
                 int pin_x = rr_graph.node_xlow(pin);
                 int pin_y = rr_graph.node_ylow(pin);
 
@@ -212,7 +212,7 @@ void rr_set_sink_locs(const RRGraphView& rr_graph, RRGraphBuilder& rr_graph_buil
                        (int)round(std::accumulate(y_coords.begin(), y_coords.end(), 0.f) / (double)y_coords.size())};
 
             // Save offset for this tile/ptc combo
-            if (physical_type_offsets.find(tile_type) == physical_type_offsets.end())
+            if (!physical_type_offsets.contains(tile_type))
                 physical_type_offsets[tile_type] = {};
 
             physical_type_offsets[tile_type].insert({node_ptc, new_loc - tile_bb.bottom_left()});
@@ -240,19 +240,17 @@ void rr_set_sink_locs(const RRGraphView& rr_graph, RRGraphBuilder& rr_graph_buil
 }
 
 bool inter_layer_connections_limited_to_opin(const RRGraphView& rr_graph) {
-    // TODO: once OPINs are connected to CHANZ nodes, this function should be reworked.
     bool limited_to_opin = true;
+
     for (const RRNodeId from_node : rr_graph.nodes()) {
+        e_rr_type from_type = rr_graph.node_type(from_node);
         for (t_edge_size edge : rr_graph.edges(from_node)) {
             RRNodeId to_node = rr_graph.edge_sink_node(from_node, edge);
-            int from_layer = rr_graph.node_layer_low(from_node);
-            int to_layer = rr_graph.node_layer_low(to_node);
+            e_rr_type to_type = rr_graph.node_type(to_node);
 
-            if (from_layer != to_layer) {
-                if (rr_graph.node_type(from_node) != e_rr_type::OPIN) {
-                    limited_to_opin = false;
-                    break;
-                }
+            if (to_type == e_rr_type::CHANZ && from_type != e_rr_type::OPIN) {
+                limited_to_opin = false;
+                break;
             }
         }
         if (!limited_to_opin) {
@@ -390,4 +388,30 @@ bool chan_same_type_are_adjacent(const RRGraphView& rr_graph, RRNodeId node1, RR
     }
 
     return false; // unreachable
+}
+
+std::vector<int> parse_ptc_numbers(const std::string& ptc_str) {
+    std::vector<int> ptc_numbers;
+    std::vector<std::string> ptc_tokens = vtr::StringToken(ptc_str).split(",");
+    for (const std::string& ptc_token : ptc_tokens) {
+        ptc_numbers.push_back(std::stoi(ptc_token));
+    }
+    return ptc_numbers;
+}
+
+std::string node_ptc_number_to_string(const RRGraphView& rr_graph, RRNodeId node) {
+    const t_rr_graph_storage& node_storage = rr_graph.rr_nodes();
+
+    if (!node_storage.node_contain_multiple_ptc(node)) {
+        return std::to_string(size_t(node_storage.node_ptc_num(node)));
+    }
+
+    std::string ret;
+    const std::vector<short>& track_nums = node_storage.node_tilable_track_nums(node);
+    for (size_t iptc = 0; iptc < track_nums.size(); iptc++) {
+        ret += std::to_string(track_nums[iptc]) + ",";
+    }
+    // Remove the last comma
+    ret.pop_back();
+    return ret;
 }

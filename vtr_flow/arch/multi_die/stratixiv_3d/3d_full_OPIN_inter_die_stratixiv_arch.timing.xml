@@ -1,3 +1,8 @@
+<!-- This file defines a 3D Stratix IV architecture where output pins (OPINs) connect to CHANZ wires to reach other layers.
+    - OPIN-to-CHANZ connectivity is set via <fc_override> under each subtile.
+    - CHANZ wires use a dedicated segment type.
+    - A scatter-gather pattern is used, but the gather part is empty. This ensures CHANZ wires are driven only by OPINs and not by other routing wires. -->
+
 <architecture>
   <models>
     <!-- LAB Primitives -->
@@ -4427,24 +4432,22 @@
         <input name="core_in" num_pins="50" equivalent="none"/>
         <output name="core_out" num_pins="40" equivalent="none"/>
         <clock name="clk" num_pins="5"/>
-        <fc in_type="frac" in_val="0.0275" out_type="frac" out_val="0.0375"/>
+        <fc in_type="frac" in_val="0.0275" out_type="frac" out_val="0.0375">
+          <fc_override port_name="core_out" fc_type="abs" fc_val="1" segment_name="LZ"/>
+        </fc>
         <pinlocations pattern="custom">
-          <!-- In Stratix IV the IO pins connect to the adjacent vertical and one 
+          <!-- In Stratix IV the IO pins connect to the adjacent vertical and one
              horizontal channel. However, since we use a single IO primitive we
              need to specify pin locations which work for all locations (e.g. top,
-             bottom, left, right edges of the device). As a result we ensure the 
+             bottom, left, right edges of the device). As a result we ensure the
              pin setup is symmetric on all sides, with half of the pins connecting
              to each side of the IO block. This means that each pin is accessible
              from one vertical and one horizontal channel. Like the LAB below the
              Fc values have been adjusted to account for this. -->
-          <loc side="left" layer_offset="1">io.core_out[0:19]</loc>
-          <loc side="left">  io.core_in[0:24]  io.clk[0:2]</loc>
-          <loc side="right" layer_offset="1">io.core_out[20:39]</loc>
-          <loc side="right">  io.core_in[24:49]  io.clk[3:4]</loc>
-          <loc side="top" layer_offset="1">io.core_out[0:19]</loc>
-          <loc side="top">   io.core_in[0:24]  io.clk[0:2]</loc>
-          <loc side="bottom" layer_offset="1">io.core_out[20:39]</loc>
-          <loc side="bottom">io.core_in[24:49] io.clk[3:4]</loc>
+          <loc side="left">io.core_out[0:19] io.core_in[0:24] io.clk[0:2]</loc>
+          <loc side="right">io.core_out[20:39] io.core_in[24:49]  io.clk[3:4]</loc>
+          <loc side="top"> io.core_out[0:19]  io.core_in[0:24]  io.clk[0:2]</loc>
+          <loc side="bottom">io.core_in[24:49] io.clk[3:4] io.core_out[20:39]</loc>
         </pinlocations>
       </sub_tile>
     </tile>
@@ -4457,16 +4460,15 @@
         <clock name="in_clock" num_pins="2"/>
         <output name="out_clock" num_pins="10"/>
         <output name="out_signal" num_pins="10"/>
-        <fc in_type="frac" in_val="0.055" out_type="frac" out_val="0.075"/>
+        <fc in_type="frac" in_val="0.055" out_type="frac" out_val="0.075">
+          <fc_override port_name="out_clock" fc_type="abs" fc_val="1" segment_name="LZ"/>
+          <fc_override port_name="out_signal" fc_type="abs" fc_val="1" segment_name="LZ"/>
+        </fc>
         <pinlocations pattern="custom">
-          <loc side="left" layer_offset="1">PLL.out_clock PLL.out_signal</loc>
-          <loc side="left">PLL.in_signal PLL.in_clock</loc>
-          <loc side="right" layer_offset="1">PLL.out_clock PLL.out_signal</loc>
-          <loc side="right">PLL.in_signal PLL.in_clock</loc>
-          <loc side="top" layer_offset="1">PLL.out_clock PLL.out_signal</loc>
-          <loc side="top">PLL.in_signal PLL.in_clock</loc>
-          <loc side="bottom" layer_offset="1">PLL.out_clock PLL.out_signal</loc>
-          <loc side="bottom">PLL.in_signal PLL.in_clock</loc>
+          <loc side="left">PLL.out_clock PLL.out_signal PLL.in_signal PLL.in_clock</loc>
+          <loc side="right">PLL.out_clock PLL.out_signal PLL.in_signal PLL.in_clock</loc>
+          <loc side="top">PLL.out_clock PLL.out_signal PLL.in_signal PLL.in_clock</loc>
+          <loc side="bottom">PLL.out_clock PLL.out_signal PLL.in_signal PLL.in_clock</loc>
         </pinlocations>
       </sub_tile>
     </tile>
@@ -4509,11 +4511,13 @@
           <!--Chains do not connect to general global routing-->
           <fc_override port_name="cin" fc_type="frac" fc_val="0"/>
           <fc_override port_name="cout" fc_type="frac" fc_val="0"/>
-          <!--Note: We do not list the LAB Share chain ports as having zero fc. 
-              VPR uses this (along with a pack pattern and direct link) to identify 
-              carry chain like structures which must be treated as placement macros.  
+          <fc_override port_name="data_out" fc_type="abs" fc_val="1" segment_name="LZ"/>
+          <fc_override port_name="shareout" fc_type="abs" fc_val="1" segment_name="LZ"/>
+          <!--Note: We do not list the LAB Share chain ports as having zero fc.
+              VPR uses this (along with a pack pattern and direct link) to identify
+              carry chain like structures which must be treated as placement macros.
 
-              However VPR currently does not support multiple chains/placement 
+              However VPR currently does not support multiple chains/placement
               macros per primitive. We DO hook-up the share ports with directlink
               but do NOT set fc to zero to avoid this issue. -->
         </fc>
@@ -4528,13 +4532,10 @@
                each block pin can connect to some Vertical and some Horizontal wires in Stratix IV.
                Note that Fc_in/Fc_out have been scaled to account for this.
              -->
-          <loc side="left" layer_offset="1">LAB.data_out[0:19]</loc>
-          <loc side="left">  LAB.data_in[0:39]  LAB.control_in[0:3] LAB.clk[0]</loc>
-          <loc side="right" layer_offset="1">LAB.data_out[20:39]</loc>
-          <loc side="right"> LAB.data_in[40:79] LAB.control_in[4:6] LAB.clk[1]</loc>
-          <loc side="top" layer_offset="1">LAB.data_out</loc>
-          <loc side="top">   LAB.data_in        LAB.control_in        LAB.clk    LAB.cin LAB.sharein</loc>
-          <loc side="bottom" layer_offset="1">LAB.cout LAB.shareout</loc>
+          <loc side="left">LAB.data_out[0:19] LAB.data_in[0:39]  LAB.control_in[0:3] LAB.clk[0]</loc>
+          <loc side="right">LAB.data_out[20:39] LAB.data_in[40:79] LAB.control_in[4:6] LAB.clk[1]</loc>
+          <loc side="top">LAB.data_out LAB.data_in LAB.control_in LAB.clk LAB.cin LAB.sharein</loc>
+          <loc side="bottom">LAB.cout LAB.shareout</loc>
         </pinlocations>
       </sub_tile>
     </tile>
@@ -4567,9 +4568,14 @@
                     Fc_in: 0.0275
                     Fc_out: 0.0375
                -->
+          <fc_override port_name="data_out_top" fc_type="abs" fc_val="1" segment_name="LZ"/>
+          <fc_override port_name="data_out_bot" fc_type="abs" fc_val="1" segment_name="LZ"/>
+          <fc_override port_name="chain_out" fc_type="abs" fc_val="1" segment_name="LZ"/>
+          <fc_override port_name="scan_a_out" fc_type="abs" fc_val="1" segment_name="LZ"/>
+          <fc_override port_name="signal_out" fc_type="abs" fc_val="1" segment_name="LZ"/>
         </fc>
         <pinlocations pattern="custom">
-          <!-- Stratix IV is a 3 sided architecture, each 'block' can connect to routing on their 
+          <!-- Stratix IV is a 3 sided architecture, each 'block' can connect to routing on their
                left, top, and right.  To model this we spread the various ports around the three sides.
                The exceptions to the above are the chain ports, which propogate downward between blocks.
 
@@ -4577,20 +4583,20 @@
                the sides and 'top' edges of each grid location within the block.
 
                More specifically, the DSP has 4 left sides, 4 right sides, and 4 top sides where pins can
-               connect. Since the DSP actually consists of 2-halves we place the pins for each half at the 
+               connect. Since the DSP actually consists of 2-halves we place the pins for each half at the
                appropriate y-offsets.
 
                This means for instance that the top-half input pins (DSP.data_in[143:0]) are connected with
-               1/4 of them on each left/right side at y-offsets 2 and 3, and 1/2 at each top side at 
+               1/4 of them on each left/right side at y-offsets 2 and 3, and 1/2 at each top side at
                y-offsets 2 and 3. With the exception that the very top edge ('top' yoffset=3) has fewer pins
                (to account for the chain_in and scan_a_in connections) in order to keep a unifrom pin density
                per side.
 
-               This models the fact that each block pin can connect to some Vertical and some Horizontal 
+               This models the fact that each block pin can connect to some Vertical and some Horizontal
                wires in Stratix IV. Note that Fc_in/Fc_out have been scaled to account for this.
              -->
           <!-- The 'top' half of the DSP has pins connected at yoffsets 2 and 3 -->
-          <!-- 
+          <!--
             In total there are:
                 data_in     : 288
                 chain_in    :  44
@@ -4611,35 +4617,23 @@
             routing hot-spots.
         -->
           <!-- The 'top' half of the DSP has pins connected at yoffsets 2 and 3 -->
-          <loc yoffset="3" side="left" layer_offset="1">DSP.data_out_top[17:0]  DSP.scan_a_out[1:0]</loc>
-          <loc yoffset="3" side="left">DSP.data_in[35:0]    DSP.control_in[2:0] DSP.scan_a_in[1:0] DSP.clk[0] </loc>
-          <loc yoffset="2" side="left" layer_offset="1">DSP.data_out_top[35:18] DSP.scan_a_out[3:2] DSP.signal_out[0:0] </loc>
-          <loc yoffset="2" side="left">DSP.data_in[71:36]   DSP.control_in[4:3] DSP.scan_a_in[4:2]</loc>
-          <loc yoffset="3" side="right" layer_offset="1">DSP.data_out_top[53:36] DSP.scan_a_out[5:4] DSP.signal_out[1:1] </loc>
-          <loc yoffset="3" side="right">DSP.data_in[107:72]  DSP.control_in[6:5] DSP.scan_a_in[6:5] DSP.clk[1]</loc>
-          <loc yoffset="2" side="right" layer_offset="1">DSP.data_out_top[71:54] DSP.scan_a_out[7:6] DSP.signal_out[2:2] </loc>
-          <loc yoffset="2" side="right">DSP.data_in[144:108] DSP.control_in[8:6] DSP.scan_a_in[8:7]</loc>
-          <loc yoffset="3" side="top" layer_offset="1">DSP.data_out_top[35:0]  DSP.scan_a_out[3:0] DSP.signal_out[0:0]</loc>
-          <loc yoffset="3" side="top">DSP.data_in[143:72]  DSP.control_in[3:0] DSP.scan_a_in[3:0] DSP.clk[0]  DSP.chain_in</loc>
-          <loc yoffset="2" side="top" layer_offset="1">DSP.data_out_top[71:36] DSP.scan_a_out[9:4] DSP.signal_out[2:1] </loc>
-          <loc yoffset="2" side="top">DSP.data_in[71:0]    DSP.control_in[8:4] DSP.scan_a_in[8:4] DSP.clk[1]</loc>
+          <loc yoffset="3" side="left">DSP.data_out_top[17:0]  DSP.scan_a_out[1:0] DSP.data_in[35:0] DSP.control_in[2:0] DSP.scan_a_in[1:0] DSP.clk[0]</loc>
+          <loc yoffset="2" side="left">DSP.data_out_top[35:18] DSP.scan_a_out[3:2] DSP.signal_out[0:0] DSP.data_in[71:36] DSP.control_in[4:3] DSP.scan_a_in[4:2]</loc>
+          <loc yoffset="3" side="right">DSP.data_out_top[53:36] DSP.scan_a_out[5:4] DSP.signal_out[1:1] DSP.data_in[107:72]  DSP.control_in[6:5] DSP.scan_a_in[6:5] DSP.clk[1]</loc>
+          <loc yoffset="2" side="right">DSP.data_out_top[71:54] DSP.scan_a_out[7:6] DSP.signal_out[2:2] DSP.data_in[144:108] DSP.control_in[8:6] DSP.scan_a_in[8:7]</loc>
+          <loc yoffset="3" side="top">DSP.data_out_top[35:0]  DSP.scan_a_out[3:0] DSP.signal_out[0:0] DSP.data_in[143:72]  DSP.control_in[3:0] DSP.scan_a_in[3:0] DSP.clk[0]  DSP.chain_in</loc>
+          <loc yoffset="2" side="top">DSP.data_out_top[71:36] DSP.scan_a_out[9:4] DSP.signal_out[2:1] DSP.data_in[71:0]    DSP.control_in[8:4] DSP.scan_a_in[8:4] DSP.clk[1]</loc>
           <loc yoffset="3" side="bottom"/>
           <loc yoffset="2" side="bottom"/>
           <!-- The 'bottom' half of the DSP has pins connected at yoffsets 0 and 1 -->
-          <loc yoffset="1" side="left" layer_offset="1">DSP.data_out_bot[17:0]  DSP.scan_a_out[9:8]</loc>
-          <loc yoffset="1" side="left">DSP.data_in[179:145] DSP.control_in[11:9]  DSP.scan_a_in[10:9]  DSP.clk[2]</loc>
-          <loc yoffset="0" side="left" layer_offset="1">DSP.data_out_bot[35:18] DSP.scan_a_out[11:10] DSP.signal_out[3:3]</loc>
-          <loc yoffset="0" side="left">DSP.data_in[215:180] DSP.control_in[13:12] DSP.scan_a_in[12:11]</loc>
-          <loc yoffset="1" side="right" layer_offset="1">DSP.data_out_bot[53:36] DSP.scan_a_out[13:12] DSP.signal_out[4:4]</loc>
-          <loc yoffset="1" side="right">DSP.data_in[251:216] DSP.control_in[15:14] DSP.scan_a_in[14:13]</loc>
-          <loc yoffset="0" side="right" layer_offset="1">DSP.data_out_bot[71:54] DSP.scan_a_out[15:14] DSP.signal_out[5:5]</loc>
-          <loc yoffset="0" side="right">DSP.data_in[287:252] DSP.control_in[20:16] DSP.scan_a_in[17:15] DSP.clk[3]</loc>
-          <loc yoffset="1" side="top" layer_offset="1">DSP.data_out_bot[35:0]  DSP.scan_a_out[12:10] DSP.signal_out[3:3]</loc>
-          <loc yoffset="1" side="top">DSP.data_in[287:215] DSP.control_in[13:9]  DSP.scan_a_in[13:9]  DSP.clk[2]</loc>
-          <loc yoffset="0" side="top" layer_offset="1">DSP.data_out_bot[71:36] DSP.scan_a_out[17:13] DSP.signal_out[5:4]</loc>
-          <loc yoffset="0" side="top">DSP.data_in[214:144] DSP.control_in[20:16] DSP.scan_a_in[17:14] DSP.clk[3] </loc>
+          <loc yoffset="1" side="left">DSP.data_out_bot[17:0]  DSP.scan_a_out[9:8] DSP.data_in[179:145] DSP.control_in[11:9]  DSP.scan_a_in[10:9]  DSP.clk[2]</loc>
+          <loc yoffset="0" side="left">DSP.data_out_bot[35:18] DSP.scan_a_out[11:10] DSP.signal_out[3:3] DSP.data_in[215:180] DSP.control_in[13:12] DSP.scan_a_in[12:11]</loc>
+          <loc yoffset="1" side="right">DSP.data_in[251:216] DSP.control_in[15:14] DSP.scan_a_in[14:13] DSP.data_out_bot[53:36] DSP.scan_a_out[13:12] DSP.signal_out[4:4]</loc>
+          <loc yoffset="0" side="right">DSP.data_in[287:252] DSP.control_in[20:16] DSP.scan_a_in[17:15] DSP.clk[3] DSP.data_out_bot[71:54] DSP.scan_a_out[15:14] DSP.signal_out[5:5]</loc>
+          <loc yoffset="1" side="top">DSP.data_in[287:215] DSP.control_in[13:9]  DSP.scan_a_in[13:9]  DSP.clk[2] DSP.data_out_bot[35:0]  DSP.scan_a_out[12:10] DSP.signal_out[3:3]</loc>
+          <loc yoffset="0" side="top">DSP.data_in[214:144] DSP.control_in[20:16] DSP.scan_a_in[17:14] DSP.clk[3] DSP.data_out_bot[71:36] DSP.scan_a_out[17:13] DSP.signal_out[5:4]</loc>
           <loc yoffset="1" side="bottom"/>
-          <loc yoffset="0" side="bottom" layer_offset="1">DSP.chain_out</loc>
+          <loc yoffset="0" side="bottom">DSP.chain_out</loc>
         </pinlocations>
       </sub_tile>
     </tile>
@@ -4666,22 +4660,21 @@
                     Fc_in: 0.0275
                     Fc_out: 0.0375
                -->
+          <fc_override port_name="data_out" fc_type="abs" fc_val="1" segment_name="LZ"/>
+          <fc_override port_name="control_out" fc_type="abs" fc_val="1" segment_name="LZ"/>
         </fc>
         <pinlocations pattern="custom">
-          <!-- Stratix IV is a 3 sided architecture, the blocks can connect to routing on their 
+          <!-- Stratix IV is a 3 sided architecture, the blocks can connect to routing on their
                left, top, and right.  To model this we spread the various ports around the three sides.
 
                We model that half the pins can connect to each vertical channel (left/right),
-               and all can connect to the horizontal channel (top). This models the fact that 
+               and all can connect to the horizontal channel (top). This models the fact that
                each block pin can connect to some Vertical and some Horizontal wires in Stratix IV.
                Note that Fc_in/Fc_out have been scaled to account for this.
              -->
-          <loc side="left" layer_offset="1">M9K.data_out[17:0]  M9K.control_out[1:0]</loc>
-          <loc side="left">M9K.data_addr_control_in[51:0] M9K.clk_in[0]</loc>
-          <loc side="right" layer_offset="1">M9K.data_out[35:18] M9K.control_out[2:2]</loc>
-          <loc side="right">M9K.data_addr_control_in[103:52]  M9K.clk_in[1]</loc>
-          <loc side="top" layer_offset="1">M9K.data_out  M9K.control_out</loc>
-          <loc side="top">M9K.data_addr_control_in      M9K.clk_in   </loc>
+          <loc side="left">M9K.data_out[17:0]  M9K.control_out[1:0] M9K.data_addr_control_in[51:0] M9K.clk_in[0]</loc>
+          <loc side="right">M9K.data_out[35:18] M9K.control_out[2:2] M9K.data_addr_control_in[103:52]  M9K.clk_in[1]</loc>
+          <loc side="top">M9K.data_out  M9K.control_out M9K.data_addr_control_in      M9K.clk_in</loc>
           <loc side="bottom"/>
         </pinlocations>
       </sub_tile>
@@ -4709,64 +4702,42 @@
                     Fc_in: 0.0275
                     Fc_out: 0.0375
                -->
+          <fc_override port_name="data_out" fc_type="abs" fc_val="1" segment_name="LZ"/>
+          <fc_override port_name="control_out" fc_type="abs" fc_val="1" segment_name="LZ"/>
         </fc>
         <pinlocations pattern="custom">
-          <!-- Stratix IV is a 3 sided architecture, the blocks can connect to routing on their 
+          <!-- Stratix IV is a 3 sided architecture, the blocks can connect to routing on their
                left, top, and right.  To model this we spread the various ports around the three sides.
 
                We model that half the pins can connect to each adjacent vertical channel (left/right),
-               and all can connect to the horizontal channels (tops). This models the fact that 
+               and all can connect to the horizontal channels (tops). This models the fact that
                each block pin can connect to some Vertical and some Horizontal wires in Stratix IV.
                Note that Fc_in/Fc_out have been scaled to account for this.
              -->
-          <loc yoffset="7" side="left" layer_offset="1"> M144K.data_out[7:0]                                     </loc>
-          <loc yoffset="7" side="left">M144K.data_addr_control_in[24:0]                                     </loc>
-          <loc yoffset="6" side="left" layer_offset="1">   M144K.data_out[15:8]                                    </loc>
-          <loc yoffset="6" side="left" >M144K.data_addr_control_in[50:25]                                    </loc>
-          <loc yoffset="5" side="left" layer_offset="1"> M144K.data_out[22:16]                                   </loc>
-          <loc yoffset="5" side="left" >M144K.data_addr_control_in[76:51]                                   </loc>
-          <loc yoffset="4" side="left" layer_offset="1">  M144K.data_out[29:23]                                   </loc>
-          <loc yoffset="4" side="left">M144K.data_addr_control_in[102:77]                                   </loc>
-          <loc yoffset="3" side="left" layer_offset="1">M144K.data_out[36:30]   M144K.control_out[0]</loc>
-          <loc yoffset="3" side="left">M144K.data_addr_control_in[128:103]  M144K.clk_in[0]</loc>
-          <loc yoffset="2" side="left" layer_offset="1">M144K.data_out[43:37]   M144K.control_out[1]              </loc>
-          <loc yoffset="2" side="left">M144K.data_addr_control_in[154:129] </loc>
-          <loc yoffset="1" side="left" layer_offset="1">M144K.data_out[51:44]                                   </loc>
-          <loc yoffset="1" side="left">M144K.data_addr_control_in[180:155]</loc>
-          <loc yoffset="0" side="left" layer_offset="1">M144K.data_out[59:52]                                   </loc>
-          <loc yoffset="0" side="left">M144K.data_addr_control_in[206:181]</loc>
-          <loc yoffset="7" side="right" layer_offset="1">M144K.data_out[67:60]                                   </loc>
-          <loc yoffset="7" side="right">M144K.data_addr_control_in[232:207] </loc>
-          <loc yoffset="6" side="right" layer_offset="1"> M144K.data_out[75:68]                                   </loc>
-          <loc yoffset="6" side="right">M144K.data_addr_control_in[258:233] </loc>
-          <loc yoffset="5" side="right" layer_offset="1">M144K.data_out[82:76]                                   </loc>
-          <loc yoffset="5" side="right">M144K.data_addr_control_in[284:259] </loc>
-          <loc yoffset="4" side="right" layer_offset="1">M144K.data_out[89:83]   M144K.control_out[2]              </loc>
-          <loc yoffset="4" side="right">M144K.data_addr_control_in[310:285] </loc>
-          <loc yoffset="3" side="right" layer_offset="1">M144K.data_out[96:90]                      </loc>
-          <loc yoffset="3" side="right">M144K.data_addr_control_in[336:311] M144K.clk_in[1]</loc>
-          <loc yoffset="2" side="right" layer_offset="1">M144K.data_out[103:97]                                  </loc>
-          <loc yoffset="2" side="right">M144K.data_addr_control_in[362:337]                                  </loc>
-          <loc yoffset="1" side="right" layer_offset="1">M144K.data_out[111:104]                                 </loc>
-          <loc yoffset="1" side="right">M144K.data_addr_control_in[388:363]                                  </loc>
-          <loc yoffset="0" side="right" layer_offset="1">M144K.data_out[119:112]                                 </loc>
-          <loc yoffset="0" side="right">M144K.data_addr_control_in[415:389]                                 </loc>
-          <loc yoffset="7" side="top" layer_offset="1">    M144K.data_out[14:0]                                    </loc>
-          <loc yoffset="7" side="top">M144K.data_addr_control_in[51:0]    </loc>
-          <loc yoffset="6" side="top" layer_offset="1">M144K.data_out[29:15]                                   </loc>
-          <loc yoffset="6" side="top">M144K.data_addr_control_in[103:52]                                   </loc>
-          <loc yoffset="5" side="top" layer_offset="1">M144K.data_out[44:30]   M144K.control_out[0]              </loc>
-          <loc yoffset="5" side="top">M144K.data_addr_control_in[155:104] </loc>
-          <loc yoffset="4" side="top" layer_offset="1"> M144K.data_out[59:45]   M144K.control_out[1]</loc>
-          <loc yoffset="4" side="top">M144K.data_addr_control_in[207:156]    M144K.clk_in[0]</loc>
-          <loc yoffset="3" side="top">M144K.data_addr_control_in[259:208] M144K.clk_in[1]</loc>
-          <loc yoffset="3" side="top" layer_offset="1"> M144K.data_out[74:60]   M144K.control_out[2]</loc>
-          <loc yoffset="2" side="top" layer_offset="1"> M144K.data_out[89:75]                                   </loc>
-          <loc yoffset="2" side="top">M144K.data_addr_control_in[311:260]                                   </loc>
-          <loc yoffset="1" side="top" layer_offset="1">M144K.data_out[104:90]                                  </loc>
-          <loc yoffset="1" side="top">M144K.data_addr_control_in[363:312]                                   </loc>
-          <loc yoffset="0" side="top" layer_offset="1"> M144K.data_out[119:105]                                 </loc>
-          <loc yoffset="0" side="top">M144K.data_addr_control_in[415:364]                                 </loc>
+          <loc yoffset="7" side="left"> M144K.data_out[7:0] M144K.data_addr_control_in[24:0] </loc>
+          <loc yoffset="6" side="left">   M144K.data_out[15:8] M144K.data_addr_control_in[50:25] </loc>
+          <loc yoffset="5" side="left"> M144K.data_out[22:16] M144K.data_addr_control_in[76:51] </loc>
+          <loc yoffset="4" side="left">  M144K.data_out[29:23] </loc>
+          <loc yoffset="3" side="left">M144K.data_out[36:30]   M144K.control_out[0] M144K.data_addr_control_in[128:103]  M144K.clk_in[0]</loc>
+          <loc yoffset="2" side="left">M144K.data_out[43:37]   M144K.control_out[1]   M144K.data_addr_control_in[154:129]</loc>
+          <loc yoffset="1" side="left">M144K.data_out[51:44]  M144K.data_addr_control_in[180:155] </loc>
+          <loc yoffset="0" side="left">M144K.data_out[59:52]  M144K.data_addr_control_in[206:181] </loc>
+          <loc yoffset="7" side="right">M144K.data_out[67:60] M144K.data_addr_control_in[232:207] </loc>
+          <loc yoffset="6" side="right"> M144K.data_out[75:68] M144K.data_addr_control_in[258:233] </loc>
+          <loc yoffset="5" side="right">M144K.data_out[82:76] M144K.data_addr_control_in[284:259] </loc>
+          <loc yoffset="4" side="right">M144K.data_out[89:83]   M144K.control_out[2] M144K.data_addr_control_in[310:285]</loc>
+          <loc yoffset="3" side="right">M144K.data_out[96:90]  M144K.data_addr_control_in[336:311] M144K.clk_in[1]</loc>
+          <loc yoffset="2" side="right">M144K.data_out[103:97] M144K.data_addr_control_in[362:337] </loc>
+          <loc yoffset="1" side="right">M144K.data_out[111:104]  M144K.data_addr_control_in[388:363] </loc>
+          <loc yoffset="0" side="right">M144K.data_out[119:112]   M144K.data_addr_control_in[415:389]</loc>
+          <loc yoffset="7" side="top">    M144K.data_out[14:0]  M144K.data_addr_control_in[51:0]</loc>
+          <loc yoffset="6" side="top">M144K.data_out[29:15] M144K.data_addr_control_in[103:52] </loc>
+          <loc yoffset="5" side="top">M144K.data_out[44:30]   M144K.control_out[0] M144K.data_addr_control_in[155:104] </loc>
+          <loc yoffset="4" side="top"> M144K.data_out[59:45]   M144K.control_out[1] M144K.data_addr_control_in[207:156]    M144K.clk_in[0]</loc>
+          <loc yoffset="3" side="top">M144K.data_addr_control_in[259:208] M144K.clk_in[1]  M144K.data_out[74:60]   M144K.control_out[2]</loc>
+          <loc yoffset="2" side="top"> M144K.data_out[89:75] M144K.data_addr_control_in[311:260]</loc>
+          <loc yoffset="1" side="top">M144K.data_out[104:90]  M144K.data_addr_control_in[363:312] </loc>
+          <loc yoffset="0" side="top"> M144K.data_out[119:105] M144K.data_addr_control_in[415:364] </loc>
           <loc yoffset="7" side="bottom"/>
           <loc yoffset="6" side="bottom"/>
           <loc yoffset="5" side="bottom"/>
@@ -4787,7 +4758,7 @@
               'in' from the true perimeter (which is left empty). This means
               that they are fully surrounded by routing channels, allowing them
               to connect to both horizontal and vertical channels. This is a
-              minor approximation since on real Stratix IV devices there is no 
+              minor approximation since on real Stratix IV devices there is no
               perimeter-side vertical routing channel -->
         <perimeter type="EMPTY" priority="5000"/>
         <col type="io" startx="1" priority="1001"/>
@@ -4798,8 +4769,8 @@
         <!-- Bottom side -->
         <row type="io" starty="H-2" priority="1000"/>
         <!-- Top side -->
-        <!-- Stratix IV devices support up to 16 Global clocks and 12 PLLs located 
-              around the device perimeter as indicated in Figure 5-1 of Chapter 5 
+        <!-- Stratix IV devices support up to 16 Global clocks and 12 PLLs located
+              around the device perimeter as indicated in Figure 5-1 of Chapter 5
               of the Stratix IV handbook.
 
               Note the use of different priorities to avoid ambiguity on small devices -->
@@ -4853,7 +4824,7 @@
               'in' from the true perimeter (which is left empty). This means
               that they are fully surrounded by routing channels, allowing them
               to connect to both horizontal and vertical channels. This is a
-              minor approximation since on real Stratix IV devices there is no 
+              minor approximation since on real Stratix IV devices there is no
               perimeter-side vertical routing channel -->
         <perimeter type="EMPTY" priority="5000"/>
         <col type="io" startx="1" priority="1001"/>
@@ -4864,8 +4835,8 @@
         <!-- Bottom side -->
         <row type="io" starty="H-2" priority="1000"/>
         <!-- Top side -->
-        <!-- Stratix IV devices support up to 16 Global clocks and 12 PLLs located 
-              around the device perimeter as indicated in Figure 5-1 of Chapter 5 
+        <!-- Stratix IV devices support up to 16 Global clocks and 12 PLLs located
+              around the device perimeter as indicated in Figure 5-1 of Chapter 5
               of the Stratix IV handbook.
 
               Note the use of different priorities to avoid ambiguity on small devices -->
@@ -4921,7 +4892,7 @@
               'in' from the true perimeter (which is left empty). This means
               that they are fully surrounded by routing channels, allowing them
               to connect to both horizontal and vertical channels. This is a
-              minor approximation since on real Stratix IV devices there is no 
+              minor approximation since on real Stratix IV devices there is no
               perimeter-side vertical routing channel -->
         <perimeter type="EMPTY" priority="5000"/>
         <col type="io" startx="1" priority="1001"/>
@@ -4932,8 +4903,8 @@
         <!-- Bottom side -->
         <row type="io" starty="H-2" priority="1000"/>
         <!-- Top side -->
-        <!-- Stratix IV devices support up to 16 Global clocks and 12 PLLs located 
-              around the device perimeter as indicated in Figure 5-1 of Chapter 5 
+        <!-- Stratix IV devices support up to 16 Global clocks and 12 PLLs located
+              around the device perimeter as indicated in Figure 5-1 of Chapter 5
               of the Stratix IV handbook.
 
               Note the use of different priorities to avoid ambiguity on small devices -->
@@ -4987,7 +4958,7 @@
               'in' from the true perimeter (which is left empty). This means
               that they are fully surrounded by routing channels, allowing them
               to connect to both horizontal and vertical channels. This is a
-              minor approximation since on real Stratix IV devices there is no 
+              minor approximation since on real Stratix IV devices there is no
               perimeter-side vertical routing channel -->
         <perimeter type="EMPTY" priority="5000"/>
         <col type="io" startx="1" priority="1001"/>
@@ -4998,8 +4969,8 @@
         <!-- Bottom side -->
         <row type="io" starty="H-2" priority="1000"/>
         <!-- Top side -->
-        <!-- Stratix IV devices support up to 16 Global clocks and 12 PLLs located 
-              around the device perimeter as indicated in Figure 5-1 of Chapter 5 
+        <!-- Stratix IV devices support up to 16 Global clocks and 12 PLLs located
+              around the device perimeter as indicated in Figure 5-1 of Chapter 5
               of the Stratix IV handbook.
 
               Note the use of different priorities to avoid ambiguity on small devices -->
@@ -5183,7 +5154,7 @@
       </layer>
     </fixed_layout>
     <!--
-        Stratix IV has only 4 unique device dies. 
+        Stratix IV has only 4 unique device dies.
         Some devices are 'virtual': based off another die, with utilization limits controlled by Quartus
 
         Equivalent Devices:
@@ -5210,7 +5181,8 @@
       <y distr="uniform" peak="1.000000"/>
     </chan_width_distr>
     <switch_block type="custom"/>
-    <connection_block input_switch_name="ipin_cblock" input_inter_die_switch_name="die_connection"/>
+    <connection_block input_switch_name="ipin_cblock"/>
+    <opin_chanz_connectivity type="per_side"/>
   </device>
   <switchlist>
     <!-- KEM: Oct 15, 2013
@@ -5218,12 +5190,12 @@
 
          VB: the mux_trans_size and buf_size data below is in minimum width transistor *areas*, assuming the purple
 	       book area formula. This means the mux transistors are about 5x minimum drive strength.
-	       We assume the first stage of the buffer is 3x min drive strength to be reasonable given the large 
+	       We assume the first stage of the buffer is 3x min drive strength to be reasonable given the large
 	       mux transistors, and this gives a reasonable stage ratio of a bit over 5x to the second stage. We assume
 	       the n and p transistors in the first stage are equal-sized to lower the buffer trip point, since it's fed
-	       by a pass transistor mux. We can then reverse engineer the buffer second stage to hit the specified 
+	       by a pass transistor mux. We can then reverse engineer the buffer second stage to hit the specified
 	       buf_size (really buffer area) - 16.2x minimum drive nmos and 1.8*16.2 = 29.2x minimum drive.
-	       I then took the data from Jeff G.'s PTM modeling of 45 nm to get the Cin (gate of first stage) and Cout 
+	       I then took the data from Jeff G.'s PTM modeling of 45 nm to get the Cin (gate of first stage) and Cout
 	       (diff of second stage).
 
          KEM: Based on the above and scaling the PTM model from 45nm to 40nm yields the capacitance values listed for the
@@ -5249,16 +5221,14 @@
               while keeping the switch delay a reasonable (see comment in <segmentlist>) portion of the overall delay.
        -->
     <switch type="mux" name="seg4_driver" R="450" Cin="0.60e-15" Cout="4.82e-15" Tdel="59e-12" mux_trans_size="2.630740" buf_size="27.645901"/>
-    <switch type="mux" name="seg4_inter_layer_driver" R="0.0" Cin="0.0" Cout="0.0" Tdel="138.82e-12" mux_trans_size="2.630740" buf_size="27.645901"/>
-
-    <switch type="mux" name="segz_driver" R="450" Cin="0.60e-15" Cout="4.82e-15" Tdel="59e-12" mux_trans_size="2.630740" buf_size="27.645901"/>
+    <switch type="mux" name="seg4_inter_die_driver" R="0.0" Cin="0.0" Cout="0.0" Tdel="118e-12" mux_trans_size="2.630740" buf_size="27.645901"/>
+    <!--switch ipin_cblock resistance set to yeild for 4x minimum drive strength buffer-->
+    <switch type="mux" name="ipin_cblock" R="2231.5" Cout="0." Cin="1.47e-15" Tdel="0e0" mux_trans_size="1.222260" buf_size="auto"/>
     <!-- KEM: Since the L16 wires are 4x as long as the L4s, it is not unreasonable to have the L16 drivers be at least 3x as
          powerful. -->
     <switch type="mux" name="seg16_driver" R="150" Cin="1.80e-15" Cout="14.5e-15" Tdel="87e-12" mux_trans_size="2.630740" buf_size="27.645901"/>
-    <switch type="mux" name="seg16_inter_layer_driver" R="0.0" Cin="0.0" Cout="0.0" Tdel="166.82e-12" mux_trans_size="2.630740" buf_size="27.645901"/>
-    <!--switch ipin_cblock resistance set to yeild for 4x minimum drive strength buffer-->
-    <switch type="mux" name="ipin_cblock" R="2231.5" Cout="0." Cin="1.47e-15" Tdel="0e0" mux_trans_size="1.222260" buf_size="auto"/>
-    <switch type="mux" name="die_connection" R="2231.5" Cout="0" Cin="1.47e-15" Tdel="0e0" mux_trans_size="1.222260" buf_size="auto"/>
+    <switch type="mux" name="seg16_inter_die_driver" R="0.0" Cin="0.0" Cout="0.0" Tdel="146e-12" mux_trans_size="2.630740" buf_size="27.645901"/>
+    <switch type="mux" name="segz_driver" R="0.0" Cin="0.0" Cout="0.0" Tdel="59e-12" mux_trans_size="2.630740" buf_size="27.645901"/>
   </switchlist>
   <segmentlist>
     <!-- KEM: Oct 15, 2013
@@ -5328,7 +5298,7 @@
                 L4:    max: 181 ps  min: 145 ps
                 L16:   min: 289 ps  min: 250 ps
 
-             Currently VPR only models the maximum capacitance of the wire. When VPR models the minimum capacitances, 
+             Currently VPR only models the maximum capacitance of the wire. When VPR models the minimum capacitances,
              the minimum wire delays should correspond to VPR's result.
 
              With the maximum capacitance used, current parameters we achieve the following:
@@ -5353,19 +5323,19 @@
           -->
     <segment name="L4" freq="260" length="4" type="unidir" Rmetal="201.7" Cmetal="18.0e-15">
       <mux name="seg4_driver"/>
-      <mux_inter_die name="seg4_inter_layer_driver"/>
+      <mux_inter_die name="seg4_inter_die_driver"/>
       <!-- L4 connect to connection block L4 and L4prime -->
       <sb type="pattern">1 1 1 1 1</sb>
       <cb type="pattern">1 1 1 1</cb>
     </segment>
     <segment name="L16" freq="40" length="16" type="unidir" Rmetal="50.42" Cmetal="20.7e-15">
       <mux name="seg16_driver"/>
-      <mux_inter_die name="seg16_inter_layer_driver"/>
+      <mux_inter_die name="seg16_inter_die_driver"/>
       <!-- L16 connect to L16 and L4 -->
-      <!-- Vias from the top of the metal stack (global layers, where the long wires are 
-           implemented) down to the middle/bottom of the metal stack (semi-global layers, 
+      <!-- Vias from the top of the metal stack (global layers, where the long wires are
+           implemented) down to the middle/bottom of the metal stack (semi-global layers,
            where the short wires are implemented) are expensive and restrictive.
-           
+
            As a result Startix IV only places long wire switch blocks every 4 LABs -->
       <sb type="pattern">1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1</sb>
       <!-- For the same reasons, long wires do not connect to block pins in Stratix IV -->
@@ -5379,8 +5349,8 @@
     <!--Carry chain propogates downward between LAB blocks-->
     <direct name="LAB_carry_chain" from_pin="LAB.cout" to_pin="LAB.cin" x_offset="0" y_offset="-1" z_offset="0"/>
     <direct name="LAB_share_chain" from_pin="LAB.shareout" to_pin="LAB.sharein" x_offset="0" y_offset="-1" z_offset="0"/>
-    <!-- LAB direct-link interconnect. 20-bits go each way to the horizontally adjacent blocks.  
-           The actual indexes used are choosen to align with which bits are on each side of 
+    <!-- LAB direct-link interconnect. 20-bits go each way to the horizontally adjacent blocks.
+           The actual indexes used are choosen to align with which bits are on each side of
            the LAB (see LAB & block pinlocations) -->
     <direct name="LAB-LAB_directlink_drive_right" from_pin="LAB.data_out[39:20]" from_side="right" to_pin="LAB.data_in[19:0]" x_offset="1" y_offset="0" z_offset="0"/>
     <direct name="LAB-LAB_directlink_drive_left" from_pin="LAB.data_out[19:0]" from_side="left" to_pin="LAB.data_in[79:60]" x_offset="-1" y_offset="0" z_offset="0"/>
@@ -5484,20 +5454,20 @@
             </pb_type>
             <interconnect>
               <direct input="inpad.inpad" name="inpad" output="pad.recieve_off_chip">
-                <!-- KEM:  Using Quartus II with an input and output delay of 0ns recived 
+                <!-- KEM:  Using Quartus II with an input and output delay of 0ns recived
 							the following input buffer delays:
 
                          QII Models several maximum delays on inputs:
-                            1) The IOIBUF: 440ps to 740ps, typical 606ps 
+                            1) The IOIBUF: 440ps to 740ps, typical 606ps
                             2) The TITAN_IO_IBUF: typical 776 ps [In some instances values of 3514ps are reported but these seem unreasonably large for typical usage]
-                            2) The IO_DATAIN: typical 36ps 
+                            2) The IO_DATAIN: typical 36ps
 
                             We model these as a single maximum delay of: 1418ps
 
 						QII Models several minimum delays on inputs:
-                            1) The IOIBUF: typical 569ps 
+                            1) The IOIBUF: typical 569ps
                             2) The TITAN_IO_IBUF: typical 715 ps [In some instances values of 3237ps are reported but these seem unreasonably large for typical usage]
-                            2) The IO_DATAIN: typical 34ps 
+                            2) The IO_DATAIN: typical 34ps
 
                             We model these as a single minimum delay of: 1318ps
                             -->
@@ -6269,7 +6239,7 @@
         <interconnect>
           <!-- core to IO-pad connections -->
           <complete input="io.core_in" name="drive_off_chip" output="pad.drive_off_chip">
-            <!-- KEM: We have a single LAB_LINE delay coming from global routing into the IO pad 
+            <!-- KEM: We have a single LAB_LINE delay coming from global routing into the IO pad
                  in QII, typical max value: 177 ps, typical min value: 88 ps -->
             <delay_constant max="177e-12" min="88e-12" in_port="io.core_in" out_port="pad.drive_off_chip"/>
           </complete>
@@ -6582,30 +6552,30 @@
                   <output name="sumout" num_pins="1"/>
                   <output name="cout" num_pins="1"/>
                   <output name="shareout" num_pins="1"/>
-                  <!-- These are the physical minimum and maximum delay inputs on a Stratix IV LUT to the combout ouptut. 
-                       However, since VPR cannot do LUT rebalancing, we instead take the average of 
+                  <!-- These are the physical minimum and maximum delay inputs on a Stratix IV LUT to the combout ouptut.
+                       However, since VPR cannot do LUT rebalancing, we instead take the average of
                        these numbers to get more stable results
 
                        From QII:
-                        datag: 
+                        datag:
                         	max: 183e-12 //datag is a special case it is only used in extended LUT mode
                         	min: 176e-12
-                        dataf: 
+                        dataf:
                         	max: 82e-12,64e-12,70e-12
                         	min: 64e-12
-                        datae: 
+                        datae:
                         	max: 173e-12
                         	min: 136e-12, 132e-12
-                        datad: 
+                        datad:
                         	max: 213e-12,286e-12
                         	min: 176e-12
-                        datac: 
+                        datac:
                         	max: 320e-12,263e-12,291e-12,239e-12,205e-12
                         	min: 175e-12
-                        datab: 
+                        datab:
                         	max: 398e-12,339e-12
                         	min: 175e-12
-                        dataa: 
+                        dataa:
                         	max: 402e-12,338e-12
                         	min: 321e-12
 
@@ -6635,15 +6605,15 @@
                   <delay_constant max="491e-12" min="335e-12" in_port="lcell_comb.dataf" out_port="lcell_comb.sumout"/>
                   <!-- Carry input to carry output delay -->
                   <delay_constant max="11e-12" min="8e-12" in_port="lcell_comb.cin" out_port="lcell_comb.cout"/>
-                  <!-- Carry input to sumout delay 
-                       
+                  <!-- Carry input to sumout delay
+
                        Observed max values in QII:
                          287e-12, 256e-12, 272e-12
                        Observed min values in QII:
                          200e-12, 228e-12
                        -->
                   <delay_constant max="287e-12" min="228e-12" in_port="lcell_comb.cin" out_port="lcell_comb.sumout"/>
-                  <!-- Combinational LUT input to carry out delays 
+                  <!-- Combinational LUT input to carry out delays
                   -->
                   <delay_constant max="261e-12" min="193e-12" in_port="lcell_comb.dataa" out_port="lcell_comb.cout"/>
                   <delay_constant max="261e-12" min="193e-12" in_port="lcell_comb.datab" out_port="lcell_comb.cout"/>
@@ -6879,13 +6849,13 @@
           <complete input="LAB.control_in" name="LAB_control" output="alm[9:0].control">
             <!-- The delay modeled here on the ALM control inputs consists of two components:
                     1) The LAB_SEC_MUX or LAB_CONTROL_MUX delay: 52 ps
-                    2) The delay from the LAB_CONTROL_MUX to the ALM DFF: 385 ps 
-                 Therefore the total delay modeled here is: (1) + (2) = 437 ps 
+                    2) The delay from the LAB_CONTROL_MUX to the ALM DFF: 385 ps
+                 Therefore the total delay modeled here is: (1) + (2) = 437 ps
 
 				 A similar calculation for the minimum delay results in:
                     1) The LAB_SEC_MUX or LAB_CONTROL_MUX delay: 48 ps
-                    2) The delay from the LAB_CONTROL_MUX to the ALM DFF: 289 ps 
-                 Therefore the total delay modeled here is: (1) + (2) = 333 ps 
+                    2) The delay from the LAB_CONTROL_MUX to the ALM DFF: 289 ps
+                 Therefore the total delay modeled here is: (1) + (2) = 333 ps
 					-->
             <delay_constant max="437e-12" min="333e-12" in_port="LAB.control_in" out_port="alm[9:0].control"/>
           </complete>
@@ -6914,11 +6884,11 @@
           <direct input="alm[4].cout" name="alm4_alm5_carry" output="alm[5].cin">
             <!--
                  - There is extra delay crossing from the 5th to 6th ALM in
-                 - a LAB due to the extra distance (crossing control circuitry) and 
+                 - a LAB due to the extra distance (crossing control circuitry) and
                  - the optional entry/exit mux at the mid-point of the carry chain.
-                 - 
-                 - From experiments with Quartus II the maximum delay is roughly 65ps, 
-                 - since we already account for 11ps on the LUT we will account 
+                 -
+                 - From experiments with Quartus II the maximum delay is roughly 65ps,
+                 - since we already account for 11ps on the LUT we will account
                  - for the remainder (55ps) here.
 
 				 - Similarly, the value observed in QII for minimum delay is 53ps,
@@ -6943,14 +6913,14 @@
             <!--
                  - There is extra delay to enter and exit the LAB carry chain.  In Quartus II
                  - this delay is accounted for only on the output side.
-                 - 
+                 -
                  - From Quaruts II the maximum delay was found to be roughly 124ps and the
                  - minimum delay is roughly 107 ps
                  -->
             <delay_constant max="124e-12" min="107e-12" in_port="alm[9].cout" out_port="LAB.cout"/>
             <pack_pattern name="LAB_carry_chain" in_port="alm[9].cout" out_port="LAB.cout"/>
           </direct>
-          <!-- LAB share chain 
+          <!-- LAB share chain
                Note: No timing delays placed on share chain, so that critical path is
                      alwasy reported on carry chain. The share chain is only every used
                      in conjunction with the carry chain. -->
@@ -7111,10 +7081,10 @@
 
                    Specifically, the signa, signb, dataa and datab inputs, and also the scanouta output may be used in
                    registered or combinational mode independently. While it would be unusuall to have these in different
-                   modes, it is permitted in the Startix IV architecture.  
-                   
+                   modes, it is permitted in the Startix IV architecture.
+
                    To fully model this behaviour would require choosing (# inputs + # outputs) each having two modes (registered,
-                   and combinational). Then we have a set of 10 (5 ports * 2 modes [reg, comb]) and we must choose 5. 
+                   and combinational). Then we have a set of 10 (5 ports * 2 modes [reg, comb]) and we must choose 5.
                    This yeilds: 10!/(5!(10!-5!)) = 252 modes, far too many to model here. This is why we make the
                    above approximation.
 
@@ -7133,7 +7103,7 @@
                   <input name="devpor" num_pins="1"/>
                   <output name="scanouta" num_pins="18"/>
                   <output name="dataout" num_pins="36"/>
-                  <!-- 
+                  <!--
                        For the combinational multiplier mode, we primarily model the delay from
                        the data* and sign* inputs to the primary dataout output.  All other delays
                        are modeled with a delay of zero, since they should not fall upon the critical path.
@@ -7235,10 +7205,10 @@
                   <clock name="clk" num_pins="1"/>
                   <output name="scanouta" num_pins="18"/>
                   <output name="dataout" num_pins="36"/>
-                  <!-- 
+                  <!--
                        For the registered multiplier mode we assume all inputs are registered, while all outputs are
                        combinational.
-                       
+
                        From Quartus II the delay from the mac_mult input registers is:   max: 428ps |  min: 205ps
                        From Quartus II the input register setup time is: 					  99ps
                        From Quartus II the output register hold time is: 					  48ps
@@ -7248,7 +7218,7 @@
                          +  Register setup time:         99ps
                             _________________________________
                             Total Tsu:                  527ps
-                       
+
                        Correspondingly, we model the input path hold time as:
                             Register hold time:          48ps
                          -  Input to register delay:    205ps
@@ -7379,7 +7349,7 @@
               <output name="data_out" num_pins="72"/>
               <output name="signal_out" num_pins="3"/>
               <output name="loopback_out" num_pins="18"/>
-              <!-- 
+              <!--
                    We model several different operation modes of the mac_out primitive:
                         output_only
                         36_bit_multiply
@@ -7392,21 +7362,21 @@
                         shift
                         double
 
-                   We also model 4 variations of each operation mode to capture timing differences based on whether the inputs and/or outputs are 
+                   We also model 4 variations of each operation mode to capture timing differences based on whether the inputs and/or outputs are
                    registered or combinational.
 
                    This is itself an approximation of the actual Stratix IV architecture, which can support multiple levels of internal registers
-                   inside each DSP block.  To model this would be extremely verbose and time consuming. The approximation mentioned above is a 
+                   inside each DSP block.  To model this would be extremely verbose and time consuming. The approximation mentioned above is a
                    reasonable compromise, since it captures the key timing characteristics of the mac_mult from an external perspective (which is
-                   what most pack/place/route CAD tools would care about).  
-                   
+                   what most pack/place/route CAD tools would care about).
+
                    Since we do not model the internal paths and registers inside the mac_out, it is useful to keep in mind that in the actual Stratix
                    IV the DSP blocks are typically limited to ~700 MHz at the maximum level of internal pipelining.  However they are more typically
-                   limited to 510 MHz by minimum clock pulse width violations. Hence, any circuit using this architecture that reports an operating 
+                   limited to 510 MHz by minimum clock pulse width violations. Hence, any circuit using this architecture that reports an operating
                    frequency above 510 MHz but includes paths through DSP blocks may be optimistic.
 
-                   Furthermore, since most designs use only the 36-bit multiply and output only operation modes, the timing for these modes were 
-                   carefully measured in Quartus II and modeled below. All other operation modes have the same timing values, which where measured 
+                   Furthermore, since most designs use only the 36-bit multiply and output only operation modes, the timing for these modes were
+                   carefully measured in Quartus II and modeled below. All other operation modes have the same timing values, which where measured
                    in the two-level adder mode.
                    -->
               <mode name="output_only.input_type{comb}.output_type{comb}">
@@ -7420,12 +7390,12 @@
                   <input name="ena" num_pins="4"/>
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
-                  <!-- 
-                       In this mode the block is purely combinational. We model only the main data path, but add 
-                       zero delay edges to other possible timing paths through the block.  It is very unlikely 
+                  <!--
+                       In this mode the block is purely combinational. We model only the main data path, but add
+                       zero delay edges to other possible timing paths through the block.  It is very unlikely
                        that the non-datapath signals would every end up on the critical path.
 
-                       Delay through the mac_out in this mode has a maximum delay of 1105ps, and a minimum delay of 581ps, 
+                       Delay through the mac_out in this mode has a maximum delay of 1105ps, and a minimum delay of 581ps,
                        as measured using a combinational 18bit LPM_Mult in QII.
                        -->
                   <delay_constant max="1105e-12" min="581e-12" in_port="mac_out_output_only.dataa" out_port="mac_out_output_only.dataout"/>
@@ -7477,14 +7447,14 @@
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has input registers with a combinational output.  
+                       In this mode the mac_out has input registers with a combinational output.
 
                        Measuring with QII we arrived at the following maximum values:
                           Input Register Setup Time (iTsu):              99ps
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Input delay to the input registers (iTd):       0ps
                           Combinational Output delay to dataout (oTd): 1041ps
-                          
+
                        QII also output the following minimum values:
                           Input Register Setup Time (iTsu):              48ps
                           Input Register Clock-to-Q Time (iTcq):         97ps
@@ -7563,7 +7533,7 @@
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a combinational input with a registered output.  
+                       In this mode the mac_out has a combinational input with a registered output.
 
                        We estimate the following based on other modes:
                           Input delay to the output registers (iTd):      max: 	708ps 	|  min:  456ps
@@ -7583,8 +7553,8 @@
                           'dataa' combinational input delay: iTd         = max:  708ps	|  min:  456ps
                            All Tsu                         : oTsu        =        99ps
                            All uTh                         : uTh	     =        48ps
-                          'dataout' Tcq                    : oTcq + oTd  = max:  430ps	|  min:  255ps   
-                          All other Tcq                    : oTcq        = max:   97ps	|  min:   97ps   
+                          'dataout' Tcq                    : oTcq + oTd  = max:  430ps	|  min:  255ps
+                          All other Tcq                    : oTcq        = max:   97ps	|  min:   97ps
                        -->
                   <!-- External input timing -->
                   <T_setup clock="clk" port="mac_out_output_only.round" value="99e-12"/>
@@ -7647,7 +7617,7 @@
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a registered input and a registered output.  
+                       In this mode the mac_out has a registered input and a registered output.
                        We model the combinational input delay as part of the setup time, and
                        the combinational output delay as part of the clock to q time.
 
@@ -7660,8 +7630,8 @@
                           Input/Output Register Setup Time (iTsu/oTsu):       99ps
                           Input/Output Register Hold Time (uTh):      	      48ps
 					            Setup timing analysis with QII arrived at the following maximum values:
-                          Input/Output Register Clock-to-Q Time (iTcq/oTcq):  97ps 
-                          Combinational Output delay to dataout (oTd):       367ps 
+                          Input/Output Register Clock-to-Q Time (iTcq/oTcq):  97ps
+                          Combinational Output delay to dataout (oTd):       367ps
                           Input delay to the input registers (iTd):            0ps
 					            Hold timing analysis with QII arrived at the following minimum values:
                           Input/Output Register Clock-to-Q Time (iTcq/oTcq):  97ps
@@ -7670,7 +7640,7 @@
 
 
                        This results in the following Tsu and Tcq times:
-                          'dataa' Tsu:     iTsu + iTd  =  	        99ps   
+                          'dataa' Tsu:     iTsu + iTd  =  	        99ps
                           'dataa' uTh:     uTh  - iTd  =  	        48ps
                           'dataout' Tcq:   oTcq + iTd  =    max:   464ps   |   min: 280ps
                           All others Tcq:  oTcq        =    max:    97ps   |   min: 97ps
@@ -7679,7 +7649,7 @@
                           Internal Tsu: iTsu           = 		    99ps
                           Internal uTh: uTh            = 		    48ps
                           Internal Tcq: iTcq           =    max:    97ps   |   min: 97ps
-                          
+
                           Maximum combinational delay  : (1 / 510MHz) - iTsu - iTcq = 		1765ps
                           Minimum combinational delay  :  441 ps
                        -->
@@ -7749,12 +7719,12 @@
                   <input name="ena" num_pins="4"/>
                   <output name="dataout" num_pins="72"/>
                   <output name="dftout" num_pins="1"/>
-                  <!-- 
-                       In this mode the block is purely combinational. We model only the main data path, but add 
-                       zero delay edges to other possible timing paths through the block.  It is very unlikely 
+                  <!--
+                       In this mode the block is purely combinational. We model only the main data path, but add
+                       zero delay edges to other possible timing paths through the block.  It is very unlikely
                        that the non-datapath signals would every end up on the critical path.
 
-                       The delay through the mac_out in this mode has a maximum value of 1947ps, and a minimum 
+                       The delay through the mac_out in this mode has a maximum value of 1947ps, and a minimum
                        delay of 750ps, as measured using a combinational 36 bit LPM_Mult in QII.
                        -->
                   <delay_constant max="1947e-12" min="750e-12" in_port="mac_out_36_bit_multiply.dataa" out_port="mac_out_36_bit_multiply.dataout"/>
@@ -7827,7 +7797,7 @@
                   <output name="dataout" num_pins="72"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has input registers with a combinational out.  
+                       In this mode the mac_out has input registers with a combinational out.
 
                        Measuring with QII we arrived at the following values:
 
@@ -7837,15 +7807,15 @@
                           Input delay to the input registers (iTd):     432ps
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Combinational Output delay to dataout (oTd): 1922ps
-					  Hold analysis in QII arrived at the following minimum values:					   
+					  Hold analysis in QII arrived at the following minimum values:
                           Input delay to the input registers (iTd):       4ps
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Combinational Output delay to dataout (oTd):  755ps
 
                        This results in the following Tsu and Tcq times:
                           'data*' Tsu         : iTd + iTsu  =       531ps
-                          'data*' uTh	      : uTh - iTd   =        44ps 
-                          Other inputs Tsu    : iTsu        =        99ps		
+                          'data*' uTh	      : uTh - iTd   =        44ps
+                          Other inputs Tsu    : iTsu        =        99ps
                           Other inputs uTh	  : uTh         =        48ps
                           All inputs Tcq      : iTcq        = max:   97ps   |  	min:  97ps
                           'dataout' comb delay: oTd         = max: 1922ps	|  	min: 755ps
@@ -7949,7 +7919,7 @@
                   <output name="dataout" num_pins="72"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a combinational input with a registered out.  
+                       In this mode the mac_out has a combinational input with a registered out.
 
                        We estimate the following maximum delays based on other modes:
                           Combinational Output delay to dataout (oTd):  max:  333ps  |  min: 183ps
@@ -7958,16 +7928,16 @@
                           Output Register Setup Time (oTsu):              99ps
                           Output Register Clock-to-Q Time (oTcq):         97ps
                           Input delay to the output registers (iTd):    1361ps
-						  
+
 					   Measuring hold analysis with QII, we arrived at the following minimum delay values:
                           Output Register Hold Time (uTh):                48ps
                           Output Register Clock-to-Q Time (oTcq):         97ps
                           Input delay to the output registers (iTd):     393ps
-					   
+
 
                        This results in the following times:
                           'data*' input comb delay: iTd    =   max: 1361ps	|  min: 183ps
-                          'data*' Tsu             : oTsu   = 		  99ps 
+                          'data*' Tsu             : oTsu   = 		  99ps
                           'data*' uTh             : uTh    = 		  48ps
                           'dataout' Tcq      : oTcq + oTd  =   max:  430ps  |  min: 180ps
                           All others Tcq     : oTcq        =   max:   97ps	|  min:  97ps
@@ -8053,7 +8023,7 @@
                   <output name="dataout" num_pins="72"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a registered input and a registered out.  
+                       In this mode the mac_out has a registered input and a registered out.
                        We model the combinational input delay as part of the setup time, and
                        the combinational output delay as part of the clock to q time.
 
@@ -8067,7 +8037,7 @@
                           Input/Output Register Clock-to-Q Time (iTcq/oTcq): 97ps
                           Combinational Output delay to dataout (oTd):      355ps
                           Input delay to the input registers (iTd):         432ps
-						  
+
                        Measuring with QII we arrived at the following minimum values:
                           Input/Output Register Hold Time (uTh):      		 48ps
                           Input/Output Register Clock-to-Q Time (iTcq/oTcq): 97ps
@@ -8076,7 +8046,7 @@
                           Min comb delay  :  520ps
 
                        This results in the following Tsu and Tcq times:
-                          'dataa' Tsu:     iTsu + iTd  =      531ps   
+                          'dataa' Tsu:     iTsu + iTd  =      531ps
                           'dataa' uTh:     uTh  - iTd  =       44ps
                           'dataout' Tcq:   oTcq + oTd  = max: 452ps  |	min: 280ps
                           All others Tcq:  oTcq        = max:  97ps	 |	min:  97ps
@@ -8180,9 +8150,9 @@
                   <input name="ena" num_pins="4"/>
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
-                  <!-- 
-                       In this mode the block is purely combinational. We model only the main data path, but add 
-                       zero delay edges to other possible timing paths through the block.  It is very unlikely 
+                  <!--
+                       In this mode the block is purely combinational. We model only the main data path, but add
+                       zero delay edges to other possible timing paths through the block.  It is very unlikely
                        that the non-datapath signals would every end up on the critical path.
 
                        Maximum delay through the mac_out in this mode is 1765ps, and minimum delay is 763ps,
@@ -8252,7 +8222,7 @@
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has input registers with a combinational output.  
+                       In this mode the mac_out has input registers with a combinational output.
 
                        Measuring with QII in 'two level adder chain out mode' we arrived at the following values:
                           Input Register Setup Time (iTsu):              99ps
@@ -8265,7 +8235,7 @@
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Input delay to the input registers (iTd):      44ps
                           Combinational Output delay to dataout (oTd):  806ps
-					   
+
 
                        This results in the following Tsu and Tcq times:
                           'data*' Tsu        : iTsu + iTd  =         312 ps
@@ -8354,7 +8324,7 @@
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a combinational input with a registered out.  
+                       In this mode the mac_out has a combinational input with a registered out.
 
                        Measuring with QII in 'two level adder chain out' mode we arrived at the following values:
                           Output Register Setup Time (oTsu):              99 ps
@@ -8371,8 +8341,8 @@
 
                        This results in the following Tsu and Tcq times:
                           'data*' comb delay : iTd         =   max: 1227 ps	 |  min: 475 ps
-                          'dataout' Tsu      : oTsu        = 		  99 ps   
-                          'dataout' uTh      : uTh         =  		  48 ps   
+                          'dataout' Tsu      : oTsu        = 		  99 ps
+                          'dataout' uTh      : uTh         =  		  48 ps
                           'dataout' Tcq      : oTcq + oTd  =   max:  430 ps	 |  min: 277 ps
                           All others Tcq     : oTcq        =   max:   97 ps	 |  min:  97 ps
                           All others Tsu     : oTsu        = 		  99 ps
@@ -8453,7 +8423,7 @@
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a registered input and a registered out.  
+                       In this mode the mac_out has a registered input and a registered out.
                        We model the combinational input delay as part of the setup time, and
                        the combinational output delay as part of the clock to q time.
 
@@ -8477,7 +8447,7 @@
 
                        This results in the following Tsu, uTh, and Tcq times:
                           'data*' Tsu        : iTsu + iTd  = 	   312ps
-                          'data*' uTh        : uTh - iTd   = 	     4ps 
+                          'data*' uTh        : uTh - iTd   = 	     4ps
                           'dataout' Tcq      : oTcq + oTd  =  max: 430ps  |  min: 277ps
                           All others Tcq     : oTcq        =  max:  97ps  |  min: 97ps
                           All others Tsu     : iTsu        = 		99ps
@@ -8570,9 +8540,9 @@
                   <input name="ena" num_pins="4"/>
                   <output name="dataout" num_pins="55"/>
                   <output name="dftout" num_pins="1"/>
-                  <!-- 
-                       In this mode the block is purely combinational. We model only the main data path, but add 
-                       zero delay edges to other possible timing paths through the block.  It is very unlikely 
+                  <!--
+                       In this mode the block is purely combinational. We model only the main data path, but add
+                       zero delay edges to other possible timing paths through the block.  It is very unlikely
                        that the non-datapath signals would every end up on the critical path.
 
                        Maximum delay through the mac_out in this mode is 1765ps, and minimum delay is 763ps,
@@ -8647,7 +8617,7 @@
                   <output name="dataout" num_pins="55"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has input registers with a combinational output.  
+                       In this mode the mac_out has input registers with a combinational output.
 
                        Measuring with QII in 'two level adder chain out mode' we arrived at the following values:
                           Input Register Setup Time (iTsu):              99ps
@@ -8660,7 +8630,7 @@
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Input delay to the input registers (iTd):      44ps
                           Combinational Output delay to dataout (oTd):  806ps
-					   
+
 
                        This results in the following Tsu and Tcq times:
                           'data*' Tsu        : iTsu + iTd  =         312 ps
@@ -8758,7 +8728,7 @@
                   <output name="dataout" num_pins="55"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a combinational input with a registered out.  
+                       In this mode the mac_out has a combinational input with a registered out.
 
                        Measuring with QII in 'two level adder chain out' mode we arrived at the following values:
                           Output Register Setup Time (oTsu):              99 ps
@@ -8775,8 +8745,8 @@
 
                        This results in the following Tsu and Tcq times:
                           'data*' comb delay : iTd         =   max: 1227 ps	 |  min: 475 ps
-                          'dataout' Tsu      : oTsu        = 		  99 ps   
-                          'dataout' uTh      : uTh         =  		  48 ps   
+                          'dataout' Tsu      : oTsu        = 		  99 ps
+                          'dataout' uTh      : uTh         =  		  48 ps
                           'dataout' Tcq      : oTcq + oTd  =   max:  430 ps	 |  min: 277 ps
                           All others Tcq     : oTcq        =   max:   97 ps	 |  min:  97 ps
                           All others Tsu     : oTsu        = 		  99 ps
@@ -8860,7 +8830,7 @@
                   <output name="dataout" num_pins="55"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a registered input and a registered out.  
+                       In this mode the mac_out has a registered input and a registered out.
                        We model the combinational input delay as part of the setup time, and
                        the combinational output delay as part of the clock to q time.
 
@@ -8884,7 +8854,7 @@
 
                        This results in the following Tsu, uTh, and Tcq times:
                           'data*' Tsu        : iTsu + iTd  = 	   312ps
-                          'data*' uTh        : uTh - iTd   = 	     4ps 
+                          'data*' uTh        : uTh - iTd   = 	     4ps
                           'dataout' Tcq      : oTcq + oTd  =  max: 430ps  |  min: 277ps
                           All others Tcq     : oTcq        =  max:  97ps  |  min: 97ps
                           All others Tsu     : iTsu        = 		99ps
@@ -8989,9 +8959,9 @@
                   <output name="dataout" num_pins="38"/>
                   <output name="overflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
-                  <!-- 
-                       In this mode the block is purely combinational. We model only the main data path, but add 
-                       zero delay edges to other possible timing paths through the block.  It is very unlikely 
+                  <!--
+                       In this mode the block is purely combinational. We model only the main data path, but add
+                       zero delay edges to other possible timing paths through the block.  It is very unlikely
                        that the non-datapath signals would every end up on the critical path.
 
                        Maximum delay through the mac_out in this mode is 1765ps, and minimum delay is 763ps,
@@ -9088,7 +9058,7 @@
                   <output name="overflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has input registers with a combinational output.  
+                       In this mode the mac_out has input registers with a combinational output.
 
                        Measuring with QII in 'two level adder chain out mode' we arrived at the following values:
                           Input Register Setup Time (iTsu):              99ps
@@ -9101,7 +9071,7 @@
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Input delay to the input registers (iTd):      44ps
                           Combinational Output delay to dataout (oTd):  806ps
-					   
+
 
                        This results in the following Tsu and Tcq times:
                           'data*' Tsu        : iTsu + iTd  =         312 ps
@@ -9211,7 +9181,7 @@
                   <output name="overflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a combinational input with a registered out.  
+                       In this mode the mac_out has a combinational input with a registered out.
 
                        Measuring with QII in 'two level adder chain out' mode we arrived at the following values:
                           Output Register Setup Time (oTsu):              99 ps
@@ -9228,8 +9198,8 @@
 
                        This results in the following Tsu and Tcq times:
                           'data*' comb delay : iTd         =   max: 1227 ps	 |  min: 475 ps
-                          'dataout' Tsu      : oTsu        = 		  99 ps   
-                          'dataout' uTh      : uTh         =  		  48 ps   
+                          'dataout' Tsu      : oTsu        = 		  99 ps
+                          'dataout' uTh      : uTh         =  		  48 ps
                           'dataout' Tcq      : oTcq + oTd  =   max:  430 ps	 |  min: 277 ps
                           All others Tcq     : oTcq        =   max:   97 ps	 |  min:  97 ps
                           All others Tsu     : oTsu        = 		  99 ps
@@ -9325,7 +9295,7 @@
                   <output name="overflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a registered input and a registered out.  
+                       In this mode the mac_out has a registered input and a registered out.
                        We model the combinational input delay as part of the setup time, and
                        the combinational output delay as part of the clock to q time.
 
@@ -9349,7 +9319,7 @@
 
                        This results in the following Tsu, uTh, and Tcq times:
                           'data*' Tsu        : iTsu + iTd  = 	   312ps
-                          'data*' uTh        : uTh - iTd   = 	     4ps 
+                          'data*' uTh        : uTh - iTd   = 	     4ps
                           'dataout' Tcq      : oTcq + oTd  =  max: 430ps  |  min: 277ps
                           All others Tcq     : oTcq        =  max:  97ps  |  min: 97ps
                           All others Tsu     : iTsu        = 		99ps
@@ -9468,9 +9438,9 @@
                   <output name="overflow" num_pins="1"/>
                   <output name="saturatechainoutoverflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
-                  <!-- 
-                       In this mode the block is purely combinational. We model only the main data path, but add 
-                       zero delay edges to other possible timing paths through the block.  It is very unlikely 
+                  <!--
+                       In this mode the block is purely combinational. We model only the main data path, but add
+                       zero delay edges to other possible timing paths through the block.  It is very unlikely
                        that the non-datapath signals would every end up on the critical path.
 
                        Maximum delay through the mac_out in this mode is 1765ps, and minimum delay is 763ps,
@@ -9605,7 +9575,7 @@
                   <output name="saturatechainoutoverflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has input registers with a combinational output.  
+                       In this mode the mac_out has input registers with a combinational output.
 
                        Measuring with QII in 'two level adder chain out mode' we arrived at the following values:
                           Input Register Setup Time (iTsu):              99ps
@@ -9618,7 +9588,7 @@
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Input delay to the input registers (iTd):      44ps
                           Combinational Output delay to dataout (oTd):  806ps
-					   
+
 
                        This results in the following Tsu and Tcq times:
                           'data*' Tsu        : iTsu + iTd  =         312 ps
@@ -9748,7 +9718,7 @@
                   <output name="saturatechainoutoverflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a combinational input with a registered out.  
+                       In this mode the mac_out has a combinational input with a registered out.
 
                        Measuring with QII in 'two level adder chain out' mode we arrived at the following values:
                           Output Register Setup Time (oTsu):              99 ps
@@ -9765,8 +9735,8 @@
 
                        This results in the following Tsu and Tcq times:
                           'data*' comb delay : iTd         =   max: 1227 ps	 |  min: 475 ps
-                          'dataout' Tsu      : oTsu        = 		  99 ps   
-                          'dataout' uTh      : uTh         =  		  48 ps   
+                          'dataout' Tsu      : oTsu        = 		  99 ps
+                          'dataout' uTh      : uTh         =  		  48 ps
                           'dataout' Tcq      : oTcq + oTd  =   max:  430 ps	 |  min: 277 ps
                           All others Tcq     : oTcq        =   max:   97 ps	 |  min:  97 ps
                           All others Tsu     : oTsu        = 		  99 ps
@@ -9883,7 +9853,7 @@
                   <output name="saturatechainoutoverflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a registered input and a registered out.  
+                       In this mode the mac_out has a registered input and a registered out.
                        We model the combinational input delay as part of the setup time, and
                        the combinational output delay as part of the clock to q time.
 
@@ -9907,7 +9877,7 @@
 
                        This results in the following Tsu, uTh, and Tcq times:
                           'data*' Tsu        : iTsu + iTd  = 	   312ps
-                          'data*' uTh        : uTh - iTd   = 	     4ps 
+                          'data*' uTh        : uTh - iTd   = 	     4ps
                           'dataout' Tcq      : oTcq + oTd  =  max: 430ps  |  min: 277ps
                           All others Tcq     : oTcq        =  max:  97ps  |  min: 97ps
                           All others Tsu     : iTsu        = 		99ps
@@ -10037,9 +10007,9 @@
                   <output name="dataout" num_pins="44"/>
                   <output name="overflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
-                  <!-- 
-                       In this mode the block is purely combinational. We model only the main data path, but add 
-                       zero delay edges to other possible timing paths through the block.  It is very unlikely 
+                  <!--
+                       In this mode the block is purely combinational. We model only the main data path, but add
+                       zero delay edges to other possible timing paths through the block.  It is very unlikely
                        that the non-datapath signals would every end up on the critical path.
 
                        Maximum delay through the mac_out in this mode is 1765ps, and minimum delay is 763ps,
@@ -10141,7 +10111,7 @@
                   <output name="overflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has input registers with a combinational output.  
+                       In this mode the mac_out has input registers with a combinational output.
 
                        Measuring with QII in 'two level adder chain out mode' we arrived at the following values:
                           Input Register Setup Time (iTsu):              99ps
@@ -10154,7 +10124,7 @@
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Input delay to the input registers (iTd):      44ps
                           Combinational Output delay to dataout (oTd):  806ps
-					   
+
 
                        This results in the following Tsu and Tcq times:
                           'data*' Tsu        : iTsu + iTd  =         312 ps
@@ -10267,7 +10237,7 @@
                   <output name="overflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a combinational input with a registered out.  
+                       In this mode the mac_out has a combinational input with a registered out.
 
                        Measuring with QII in 'two level adder chain out' mode we arrived at the following values:
                           Output Register Setup Time (oTsu):              99 ps
@@ -10284,8 +10254,8 @@
 
                        This results in the following Tsu and Tcq times:
                           'data*' comb delay : iTd         =   max: 1227 ps	 |  min: 475 ps
-                          'dataout' Tsu      : oTsu        = 		  99 ps   
-                          'dataout' uTh      : uTh         =  		  48 ps   
+                          'dataout' Tsu      : oTsu        = 		  99 ps
+                          'dataout' uTh      : uTh         =  		  48 ps
                           'dataout' Tcq      : oTcq + oTd  =   max:  430 ps	 |  min: 277 ps
                           All others Tcq     : oTcq        =   max:   97 ps	 |  min:  97 ps
                           All others Tsu     : oTsu        = 		  99 ps
@@ -10385,7 +10355,7 @@
                   <output name="overflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a registered input and a registered out.  
+                       In this mode the mac_out has a registered input and a registered out.
                        We model the combinational input delay as part of the setup time, and
                        the combinational output delay as part of the clock to q time.
 
@@ -10409,7 +10379,7 @@
 
                        This results in the following Tsu, uTh, and Tcq times:
                           'data*' Tsu        : iTsu + iTd  = 	   312ps
-                          'data*' uTh        : uTh - iTd   = 	     4ps 
+                          'data*' uTh        : uTh - iTd   = 	     4ps
                           'dataout' Tcq      : oTcq + oTd  =  max: 430ps  |  min: 277ps
                           All others Tcq     : oTcq        =  max:  97ps  |  min: 97ps
                           All others Tsu     : iTsu        = 		99ps
@@ -10532,9 +10502,9 @@
                   <output name="overflow" num_pins="1"/>
                   <output name="saturatechainoutoverflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
-                  <!-- 
-                       In this mode the block is purely combinational. We model only the main data path, but add 
-                       zero delay edges to other possible timing paths through the block.  It is very unlikely 
+                  <!--
+                       In this mode the block is purely combinational. We model only the main data path, but add
+                       zero delay edges to other possible timing paths through the block.  It is very unlikely
                        that the non-datapath signals would every end up on the critical path.
 
                        Maximum delay through the mac_out in this mode is 1765ps, and minimum delay is 763ps,
@@ -10675,7 +10645,7 @@
                   <output name="saturatechainoutoverflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has input registers with a combinational output.  
+                       In this mode the mac_out has input registers with a combinational output.
 
                        Measuring with QII in 'two level adder chain out mode' we arrived at the following values:
                           Input Register Setup Time (iTsu):              99ps
@@ -10688,7 +10658,7 @@
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Input delay to the input registers (iTd):      44ps
                           Combinational Output delay to dataout (oTd):  806ps
-					   
+
 
                        This results in the following Tsu and Tcq times:
                           'data*' Tsu        : iTsu + iTd  =         312 ps
@@ -10822,7 +10792,7 @@
                   <output name="saturatechainoutoverflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a combinational input with a registered out.  
+                       In this mode the mac_out has a combinational input with a registered out.
 
                        Measuring with QII in 'two level adder chain out' mode we arrived at the following values:
                           Output Register Setup Time (oTsu):              99 ps
@@ -10839,8 +10809,8 @@
 
                        This results in the following Tsu and Tcq times:
                           'data*' comb delay : iTd         =   max: 1227 ps	 |  min: 475 ps
-                          'dataout' Tsu      : oTsu        = 		  99 ps   
-                          'dataout' uTh      : uTh         =  		  48 ps   
+                          'dataout' Tsu      : oTsu        = 		  99 ps
+                          'dataout' uTh      : uTh         =  		  48 ps
                           'dataout' Tcq      : oTcq + oTd  =   max:  430 ps	 |  min: 277 ps
                           All others Tcq     : oTcq        =   max:   97 ps	 |  min:  97 ps
                           All others Tsu     : oTsu        = 		  99 ps
@@ -10960,7 +10930,7 @@
                   <output name="saturatechainoutoverflow" num_pins="1"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a registered input and a registered out.  
+                       In this mode the mac_out has a registered input and a registered out.
                        We model the combinational input delay as part of the setup time, and
                        the combinational output delay as part of the clock to q time.
 
@@ -10984,7 +10954,7 @@
 
                        This results in the following Tsu, uTh, and Tcq times:
                           'data*' Tsu        : iTsu + iTd  = 	   312ps
-                          'data*' uTh        : uTh - iTd   = 	     4ps 
+                          'data*' uTh        : uTh - iTd   = 	     4ps
                           'dataout' Tcq      : oTcq + oTd  =  max: 430ps  |  min: 277ps
                           All others Tcq     : oTcq        =  max:  97ps  |  min: 97ps
                           All others Tsu     : iTsu        = 		99ps
@@ -11114,9 +11084,9 @@
                   <input name="ena" num_pins="4"/>
                   <output name="dataout" num_pins="72"/>
                   <output name="dftout" num_pins="1"/>
-                  <!-- 
-                       In this mode the block is purely combinational. We model only the main data path, but add 
-                       zero delay edges to other possible timing paths through the block.  It is very unlikely 
+                  <!--
+                       In this mode the block is purely combinational. We model only the main data path, but add
+                       zero delay edges to other possible timing paths through the block.  It is very unlikely
                        that the non-datapath signals would every end up on the critical path.
 
                        Maximum delay through the mac_out in this mode is 1765ps, and minimum delay is 763ps,
@@ -11200,7 +11170,7 @@
                   <output name="dataout" num_pins="72"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has input registers with a combinational output.  
+                       In this mode the mac_out has input registers with a combinational output.
 
                        Measuring with QII in 'two level adder chain out mode' we arrived at the following values:
                           Input Register Setup Time (iTsu):              99ps
@@ -11213,7 +11183,7 @@
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Input delay to the input registers (iTd):      44ps
                           Combinational Output delay to dataout (oTd):  806ps
-					   
+
 
                        This results in the following Tsu and Tcq times:
                           'data*' Tsu        : iTsu + iTd  =         312 ps
@@ -11320,7 +11290,7 @@
                   <output name="dataout" num_pins="72"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a combinational input with a registered out.  
+                       In this mode the mac_out has a combinational input with a registered out.
 
                        Measuring with QII in 'two level adder chain out' mode we arrived at the following values:
                           Output Register Setup Time (oTsu):              99 ps
@@ -11337,8 +11307,8 @@
 
                        This results in the following Tsu and Tcq times:
                           'data*' comb delay : iTd         =   max: 1227 ps	 |  min: 475 ps
-                          'dataout' Tsu      : oTsu        = 		  99 ps   
-                          'dataout' uTh      : uTh         =  		  48 ps   
+                          'dataout' Tsu      : oTsu        = 		  99 ps
+                          'dataout' uTh      : uTh         =  		  48 ps
                           'dataout' Tcq      : oTcq + oTd  =   max:  430 ps	 |  min: 277 ps
                           All others Tcq     : oTcq        =   max:   97 ps	 |  min:  97 ps
                           All others Tsu     : oTsu        = 		  99 ps
@@ -11431,7 +11401,7 @@
                   <output name="dataout" num_pins="72"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a registered input and a registered out.  
+                       In this mode the mac_out has a registered input and a registered out.
                        We model the combinational input delay as part of the setup time, and
                        the combinational output delay as part of the clock to q time.
 
@@ -11455,7 +11425,7 @@
 
                        This results in the following Tsu, uTh, and Tcq times:
                           'data*' Tsu        : iTsu + iTd  = 	   312ps
-                          'data*' uTh        : uTh - iTd   = 	     4ps 
+                          'data*' uTh        : uTh - iTd   = 	     4ps
                           'dataout' Tcq      : oTcq + oTd  =  max: 430ps  |  min: 277ps
                           All others Tcq     : oTcq        =  max:  97ps  |  min: 97ps
                           All others Tsu     : iTsu        = 		99ps
@@ -11566,9 +11536,9 @@
                   <output name="loopbackout" num_pins="18"/>
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
-                  <!-- 
-                       In this mode the block is purely combinational. We model only the main data path, but add 
-                       zero delay edges to other possible timing paths through the block.  It is very unlikely 
+                  <!--
+                       In this mode the block is purely combinational. We model only the main data path, but add
+                       zero delay edges to other possible timing paths through the block.  It is very unlikely
                        that the non-datapath signals would every end up on the critical path.
 
                        Maximum delay through the mac_out in this mode is 1765ps, and minimum delay is 763ps,
@@ -11655,7 +11625,7 @@
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has input registers with a combinational output.  
+                       In this mode the mac_out has input registers with a combinational output.
 
                        Measuring with QII in 'two level adder chain out mode' we arrived at the following values:
                           Input Register Setup Time (iTsu):              99ps
@@ -11668,7 +11638,7 @@
                           Input Register Clock-to-Q Time (iTcq):         97ps
                           Input delay to the input registers (iTd):      44ps
                           Combinational Output delay to dataout (oTd):  806ps
-					   
+
 
                        This results in the following Tsu and Tcq times:
                           'data*' Tsu        : iTsu + iTd  =         312 ps
@@ -11765,7 +11735,7 @@
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a combinational input with a registered out.  
+                       In this mode the mac_out has a combinational input with a registered out.
 
                        Measuring with QII in 'two level adder chain out' mode we arrived at the following values:
                           Output Register Setup Time (oTsu):              99 ps
@@ -11782,8 +11752,8 @@
 
                        This results in the following Tsu and Tcq times:
                           'data*' comb delay : iTd         =   max: 1227 ps	 |  min: 475 ps
-                          'dataout' Tsu      : oTsu        = 		  99 ps   
-                          'dataout' uTh      : uTh         =  		  48 ps   
+                          'dataout' Tsu      : oTsu        = 		  99 ps
+                          'dataout' uTh      : uTh         =  		  48 ps
                           'dataout' Tcq      : oTcq + oTd  =   max:  430 ps	 |  min: 277 ps
                           All others Tcq     : oTcq        =   max:   97 ps	 |  min:  97 ps
                           All others Tsu     : oTsu        = 		  99 ps
@@ -11872,7 +11842,7 @@
                   <output name="dataout" num_pins="36"/>
                   <output name="dftout" num_pins="1"/>
                   <!--
-                       In this mode the mac_out has a registered input and a registered out.  
+                       In this mode the mac_out has a registered input and a registered out.
                        We model the combinational input delay as part of the setup time, and
                        the combinational output delay as part of the clock to q time.
 
@@ -11896,7 +11866,7 @@
 
                        This results in the following Tsu, uTh, and Tcq times:
                           'data*' Tsu        : iTsu + iTd  = 	   312ps
-                          'data*' uTh        : uTh - iTd   = 	     4ps 
+                          'data*' uTh        : uTh - iTd   = 	     4ps
                           'dataout' Tcq      : oTcq + oTd  =  max: 430ps  |  min: 277ps
                           All others Tcq     : oTcq        =  max:  97ps  |  min: 97ps
                           All others Tsu     : iTsu        = 		99ps
@@ -12527,7 +12497,7 @@
         <interconnect>
           <!-- DSP-half_DSP interconnect -->
           <!-- DSP Arithmetic chain -->
-          <!-- Real DSP chain connectivity 
+          <!-- Real DSP chain connectivity
           <direct name="chain_top" input="DSP.chain_in" output="half_DSP[0].chain_in"/>
           <direct name="chain_mid" input="half_DSP[0].chain_out" output="half_DSP[1].chain_in"/>
           <direct name="chain_bot" input="half_DSP[1].chain_out" output="DSP.chain_out"/> -->
@@ -12536,8 +12506,8 @@
           <complete name="chain_mid" input="DSP.chain_in half_DSP[0].chain_out" output="half_DSP[1].chain_in"/>
           <complete name="chain_bot" input="half_DSP[0].chain_out half_DSP[1].chain_out" output="DSP.chain_out"/>
           <!-- INPUT SIGNALS -->
-          <!-- Data Inputs, split betweent the two halves of the DSP block 
-               
+          <!-- Data Inputs, split betweent the two halves of the DSP block
+
                From Quartus II the maximum LAB_LINE delay from global routing innto the inputs is 239ps on average.
                Similarly, the minimum LAB_LINE delay is 132ps.
                -->
@@ -12558,7 +12528,7 @@
           <direct name="clk_top" input="DSP.clk" output="half_DSP[0].clk"/>
           <direct name="clk_bot" input="DSP.clk" output="half_DSP[1].clk"/>
           <!-- OUTPUT SIGNALS -->
-          <!-- Data Outputs, split betweent the two halves of the DSP block 
+          <!-- Data Outputs, split betweent the two halves of the DSP block
                From QII the maximum MAC_BUFFER has a delay of 28ps and the minimum MAC_BUFFER has a delay of 27 ps
                -->
           <direct name="data_out_top" input="half_DSP[0].data_out" output="DSP.data_out_top">
@@ -48258,16 +48228,16 @@
   <switchblocklist>
     <!-- Stratix IV uses a uni-directional routing architecture with a Driver Input Mux (DIM) size of 12 (i.e.
            each wire can be driven by one of 12 block/outputs or wires) for the L4s.
-           
-           In the Stratix IV architecture the long wires (L16 here) are accessible only from the short wires, 
-           and are not connected to the block pins (i.e. connection blocks). Furthermore, they only connect 
+
+           In the Stratix IV architecture the long wires (L16 here) are accessible only from the short wires,
+           and are not connected to the block pins (i.e. connection blocks). Furthermore, they only connect
            to switch blocks every 4 LABs (to avoid expensive deep via stacks).
            We approximate the L16 DIM size as 40:1 (in reality it is a pair of 20:1 (?) muxes with a 2:1 swap mux
            in front, which has nearly the same connectivity as a full 40:1).
 
            L4 wires
            ================
-           At a channel width of 300 there are 260 L4/L4prime wires. At an effective Fc_out of 0.075 
+           At a channel width of 300 there are 260 L4/L4prime wires. At an effective Fc_out of 0.075
            and 40 LAB outputs this yeilds:
 
                 40 * 2 = 80 outputs per channel  [2 LABs per-channel]
@@ -48311,7 +48281,7 @@
 
                40 / 16 = 2.25 => 2 wires starting/ending per channel + direction at each switch block
                (i.e. from each direction, north/south/east/west, there is one L16 starting, and one L16 ending)
-           
+
            We assign the 40 DIM inputs as follows:
 
                 L16
@@ -48325,7 +48295,7 @@
 
            Switch pattern
            ==============
-           This switch block is based on the Wilton switch block (see Page 103 of Steve Wilton's PhD Thesis 
+           This switch block is based on the Wilton switch block (see Page 103 of Steve Wilton's PhD Thesis
            "Architecture and Algorithms for Field-Programmable Gate Arrays with Embedded Memory", 1997):
 
                 left-to-top: W - t
@@ -48354,11 +48324,11 @@
       <!-- L16 drivers -->
       <wireconn num_conns="3*to" from_type="L16" from_switchpoint="0,12,8,4" to_type="L16" to_switchpoint="0"/>
       <wireconn num_conns="10*to" from_type="L4" from_switchpoint="0" to_type="L16" to_switchpoint="0"/>
-      <!-- L4 drivers 
+      <!-- L4 drivers
 
                Driving from L16 (few) to L4 (many) preferr driving from end-point of L16, although since there are many they will
                all be multiply connected.
-               
+
                Driving from L4 (many) to L4 (many) shuffle the switchpoints so the L4's are driven from a variety of switchpoints.
                Since the actual number L4s starting/ending are equal, using 'fixed' from_order would mean only switchpoint 0 -> 0
                connections. A 'shuffled' order will mix-up the from switchpoints for more diversity.
@@ -48385,16 +48355,16 @@
       <!-- L16 drivers -->
       <wireconn num_conns="3*to" from_type="L16" from_switchpoint="0,12,8,4" to_type="L16" to_switchpoint="0"/>
       <wireconn num_conns="10*to" from_type="L4" from_switchpoint="0" to_type="L16" to_switchpoint="0"/>
-      <!-- L4 drivers 
+      <!-- L4 drivers
 
                Driving from L16 (few) to L4 (many) preferr driving from end-point of L16, although since there are many they will
                all be multiply connected.
-               
+
                Driving from L4 (many) to L4 (many) shuffle the switchpoints so the L4's are driven from a variety of switchpoints.
                Since the actual number L4s starting/ending are equal, using 'fixed' from_order would mean only switchpoint 0 -> 0
                connections. A 'shuffled' order will mix-up the from switchpoints for more diversity.
 
-               Note that a different from_switchpoints ordering is used to ensure a different shuffling occurs compared to 
+               Note that a different from_switchpoints ordering is used to ensure a different shuffling occurs compared to
                wilton_turn_clockwise_core.
                -->
       <wireconn num_conns="2*to" from_order="shuffled">
@@ -48416,7 +48386,7 @@
         <func type="bt" formula="t"/>
         <!-- bottom to top -->
       </switchfuncs>
-      <!-- L16 Drivers 
+      <!-- L16 Drivers
                 Note that we order the switchpoints in order of preference, since VPR currently
                 iterates through the source sets in order, such that we connect first to wires
                 ending at the switchblock (switchpoint 0), and then fallback to switchpoints
@@ -48510,4 +48480,27 @@
       <wireconn num_conns="1*max(from,to)" from_type="L4" from_switchpoint="0,1,2,3" from_order="shuffled" to_type="L4" to_switchpoint="0"/>
     </switchblock>
   </switchblocklist>
+  <!-- Specify a scatter-gather pattern for 3D connections. -->
+  <scatter_gather_list>
+    <sg_pattern name="name" type="unidir">
+      <gather>
+        <!-- We gather OPINs, whose fc CHANZ wires is specified with <fc_override> tag under each subtile.
+        Here, we connect zero wires to CHANZ wires. -->
+        <wireconn num_conns="0" from_type="L4" from_switchpoint="3" side="rltb"/>
+      </gather>
+      <scatter>
+        <!-- Scatter 30 connections to the start of L4 wires at all four sides of a switchblock location -->
+        <wireconn num_conns="30" to_type="L4" to_switchpoint="0" side="rtl"/>
+      </scatter>
+      <sg_link_list>
+        <!-- Link going up one layer, using the 'seg4_inter_die_driver' multiplexer to gather connections from the bottom layer and using the LZ node/wire to move up one layer -->
+        <sg_link name="L_UP" z_offset="1" x_offset="0" y_offset="0" mux="seg4_inter_die_driver" seg_type="LZ"/>
+        <!-- Link going down one layer, using the 'seg4_inter_die_driver' multiplexer to gather connections from the top layer and using the LZ node/wire to down up one layer -->
+        <sg_link name="L_DOWN" z_offset="-1" mux="seg4_inter_die_driver" seg_type="LZ"/>
+      </sg_link_list>
+      <!-- Instantiate 6 'L_UP' and 6 'L_DOWN' sg_links per switchblock location everywhere on the device -->
+      <sg_location type="EVERYWHERE" num="60" sg_link_name="L_UP"/>
+      <sg_location type="EVERYWHERE" num="60" sg_link_name="L_DOWN"/>
+    </sg_pattern>
+  </scatter_gather_list>
 </architecture>
