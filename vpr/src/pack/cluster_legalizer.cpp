@@ -1592,7 +1592,12 @@ bool ClusterLegalizer::check_cluster_legality(LegalizationClusterId cluster_id) 
     // route on the cluster. If it succeeds, the cluster is fully legal.
     t_mode_selection_status mode_status;
     LegalizationCluster& cluster = legalization_clusters_[cluster_id];
-    return try_intra_lb_route(cluster.router_data, log_verbosity_, &mode_status);
+    bool routed;
+    do {
+        reset_intra_lb_route(cluster.router_data);
+        routed = try_intra_lb_route(cluster.router_data, log_verbosity_, &mode_status);
+    } while (mode_status.is_mode_issue());
+    return routed;
 }
 
 ClusterLegalizer::ClusterLegalizer(const AtomNetlist& atom_netlist,
