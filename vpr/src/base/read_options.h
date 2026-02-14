@@ -128,6 +128,8 @@ struct t_options {
     argparse::ArgValue<int> pack_feasible_block_array_size;
     argparse::ArgValue<std::vector<std::string>> pack_high_fanout_threshold;
     argparse::ArgValue<int> pack_verbosity;
+    argparse::ArgValue<bool> memoize_cluster_packings;
+
     /* Placement options */
     argparse::ArgValue<int> Seed;
     argparse::ArgValue<bool> ShowPlaceTiming;

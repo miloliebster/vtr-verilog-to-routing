@@ -24,6 +24,7 @@
 #include "vtr_vector_map.h"
 #include "atom_pb_bimap.h"
 #include "vpr_utils.h"
+#include "packing_signature_tree.h"
 
 // Forward declarations
 class Prepacker;
@@ -269,6 +270,8 @@ class ClusterLegalizer {
      *          performed.
      *  @param enable_pin_feasibility_filter
      *          A flag to turn on/off the check for pin usage feasibility.
+     *  @param memoize_cluster_packings
+     *          A flag to turn on/off the cluster memoization runtime optimization.
      *  @param models
      *  @param log_verbosity
      *          Controls how verbose the log messages will be within this class.
@@ -280,6 +283,7 @@ class ClusterLegalizer {
                      const t_pack_high_fanout_thresholds& high_fanout_thresholds,
                      ClusterLegalizationStrategy cluster_legalization_strategy,
                      bool enable_pin_feasibility_filter,
+                     bool memoize_cluster_packings,
                      const LogicalModels& models,
                      int log_verbosity);
 
@@ -372,7 +376,24 @@ class ClusterLegalizer {
     bool check_cluster_legality(LegalizationClusterId cluster_id);
 
     /*
-     * @brief Cleans the cluster of unnessary data, reducing the memory footprint.
+     * @brief Ensure that the cluster has a legal final routing.
+     *
+     * Checks whether the active routing strategy has produced a legal final
+     * routing. For SKIP_INTRA_LB_ROUTE packing, this is the first time routing
+     * is run on the cluster and may fail. For detailed routing with the
+     * the PackingSignatureTree enabled, this function makes sure the cluster
+     * has a routing to pass to later stages since routing steps may have been
+     * skipped on configurations where the legality was known from packing
+     * a previous cluster.
+     *
+     *  @param cluster_id       The ID of the cluster to ensure has a legal routing.
+     *
+     *  @return                 True if the cluster is routed and legal, false otherwise.
+     * */
+    bool ensure_legal_final_routing(LegalizationClusterId cluster_id);
+
+    /*
+     * @brief Cleans the cluster of unnecessary data, reducing the memory footprint.
      *
      * After this function is called, no more molecules can be added to the
      * cluster. This method will ensure that the cluster has enough information
@@ -610,4 +631,10 @@ class ClusterLegalizer {
 
     /// @brief A lookup table for the pin mapping of the intra-lb pb pins.
     IntraLbPbPinLookup intra_lb_pb_pin_lookup_;
+
+    /// @brief A structure for tracking and identifying cluster packing
+    ///        patterns that have been previously tested for routing
+    ///        feasibility. Cluster legality check results are memoized and
+    ///        reused to avoid repeating work.
+    PackingSignatureTree packing_signature_tree_;
 };
