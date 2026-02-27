@@ -1,3 +1,9 @@
+#!/usr/bin/env perl
+
+use File::Copy;
+use List::Util qw(any first);
+use Term::ANSIColor;
+
 my $VTR_ROOT = $ENV{'VTR_ROOT'};
 
 sub symlink_newest_runs {
@@ -38,7 +44,7 @@ sub report_results {
     `mkdir -p $VTR_ROOT/dejavu_results`;
 
     foreach my $arch (keys %results) {
-        open(my $FD, '>', "$VTR_ROOT/dejavu_results/$arch.rpt");
+        open(my $FD, '>', "$VTR_ROOT/dejavu_results/$arch.txt");
 
         my $W0 = 24;
         my $W1 = 12;
@@ -92,8 +98,7 @@ sub report_results {
             my $vpr_mem_off  = $results{$arch}{$circuit}{'off'}->[3];
             my $vpr_mem_on   = $results{$arch}{$circuit}{'on' }->[3];
             my $vpr_mem_increase = 100 * (abs($vpr_mem_off - $vpr_mem_on) / $vpr_mem_off);
-            $sum_vpr_mem_increase += $vpr_mem_increase;
-            $vpr_mem_increase = sprintf("%.0f", $vpr_mem_increase);
+            $sum_vpr_mem_increase += $vpr_mem_increase; $vpr_mem_increase = sprintf("%.0f", $vpr_mem_increase);
             $vpr_mem_off = sprintf("%.1f", $vpr_mem_off);
             $vpr_mem_on  = sprintf("%.1f", $vpr_mem_on) . ' (+' . (' ' x (3 - length($vpr_mem_increase))) . $vpr_mem_increase . '%)';
 
@@ -136,21 +141,68 @@ sub report_results {
 }
 
 sub main {
+    my $circuit_size = shift(@ARGV);
+    my $num_threads = shift(@ARGV);
+    $num_threads = 4 if (not $num_threads);
+
+    my @circuit_size_options = ('XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL');
+    if (not any {$_ eq $circuit_size} @circuit_size_options) {
+        print "Usage: launch-dejavu-artifacts.pl CIRCUITSIZE [num_threads]\n\n";
+        print "Circuit sizes (ymmv):\n";
+        print "    XXS  arm_core on flagship only (for script testing)\n";
+        print "    XS   circuits under 20 min\n";
+        print "    S    circuits under 100 min\n";
+        print "    M    circuits under 200 min\n";
+        print "    L    circuits under 1000 min\n";
+        print "    XL   circuits under 2000 min\n";
+        print "    XXL  circuits up to ~5000 min\n";
+        exit;
+    }
+
+    $circuit_size_index = 0;
+    $circuit_size_index++ while ($circuit_size_options[$circuit_size_index] ne $circuit_size);
+
+    @config_dirs = glob "$VTR_ROOT/vtr_flow/tasks/dejavu/*/config";
+    foreach my $config_dir (@config_dirs) {
+        open(my $FIN, '<', "$config_dir/config.txt.opt");
+        open(my $FOUT, '>', "$config_dir/config.txt");
+        while (my $line = <$FIN>) {
+            $line =~ s/#XXS// if $circuit_size_index >= 0;
+            $line =~ s/#XS//  if $circuit_size_index >= 1;
+            $line =~ s/#S//   if $circuit_size_index >= 2;
+            $line =~ s/#M//   if $circuit_size_index >= 3;
+            $line =~ s/#L//   if $circuit_size_index >= 4;
+            $line =~ s/#XL//  if $circuit_size_index >= 5;
+            $line =~ s/#XXL// if $circuit_size_index >= 6;
+            print $FOUT $line;
+        }
+        close($FIN);
+        close($FOUT);
+    }
+
     my @tasks = (
-        #'dejavu/verilog_flagship',
-        #'dejavu/koios_flagship',
-        #'dejavu/verilog_7series',
-        #'dejavu/koios_7series',
-        #'dejavu/titan_titanium',
+        'dejavu/verilog_flagship',
     );
+    push(@tasks, 'dejavu/koios_flagship') if ($circuit_size_index >= 1);
+    push(@tasks, 'dejavu/verilog_7series') if ($circuit_size_index >= 1);
+    push(@tasks, 'dejavu/verilog_7series') if ($circuit_size_index >= 1);
+    push(@tasks, 'dejavu/titan_titanium') if ($circuit_size_index >= 2);
 
-    open($PIPE, '-|', "$VTR_ROOT/vtr_flow/scripts/run_vtr_task.py @tasks -j 32");
-    print STDOUT $_ while (<$PIPE>);
-    close($PIPE);
-
+    my $status = system("$VTR_ROOT/vtr_flow/scripts/run_vtr_task.py @tasks -j $num_threads");
     symlink_newest_runs();
 
     report_results();
+
+    if (not $status) {
+        print "\n";
+        print color('bold yellow');
+        print "+--------------------------------------------------------------------------------+\n";
+        print "| Runtime and memory results can be found in \$VTR_ROOT/dejavu_results            |\n";
+        print "|                                                                                |\n";
+        print "| To verify diffs of QoR reports are clean, run \$VTR_ROOT/compare-dejavu-qor.pl  |\n";
+        print "+--------------------------------------------------------------------------------+\n";
+        print color('reset');
+    }
 }
 
 main();
